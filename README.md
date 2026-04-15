@@ -32,7 +32,25 @@ Instrucciones rápidas (Windows Command shell):
        Output Directory: dist
    - Alternativamente, el archivo `vercel.json` incluido establece "buildCommand" y "outputDirectory".
 
+
 Notas:
 - Este proyecto usa Vite como bundler; Bun es usado como gestor/runtime local para ejecutar los scripts.
 - Si prefieres TypeScript, convierte los archivos a `.tsx` y agrega `tsconfig.json`.
+
+Integración con Supabase (Autenticación)
+
+1) Variables de entorno (local y en Vercel): crea un archivo `.env` en la raíz con:
+
+   VITE_SUPABASE_URL="https://xyzcompany.supabase.co"
+   VITE_SUPABASE_ANON_KEY="public-anon-key"
+
+   En Vercel agrega las mismas variables en Settings > Environment Variables (usa los mismos nombres `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`).
+
+2) Endpoints implementados:
+   - `/login` — formulario de email/contraseña que usa Supabase Auth (tabla `auth.users` de Supabase).
+   - `/dashboard` — ruta protegida que solo es accesible si el usuario está autenticado.
+
+3) Flujo:
+   - El cliente usa `@supabase/supabase-js` para autenticar (`signInWithPassword`) y escucha cambios de sesión.
+   - La app expone un `AuthContext` para acceder a `user`, `login` y `logout`.
 

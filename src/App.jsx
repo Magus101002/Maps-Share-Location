@@ -1,25 +1,39 @@
-import React from "react";
-import Container from "@mui/material/Container";
-import Typography from "@mui/material/Typography";
-import Button from "@mui/material/Button";
-import Stack from "@mui/material/Stack";
-import IconButton from "@mui/material/IconButton";
-import HomeIcon from "@mui/icons-material/Home";
+import React from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import Home from './pages/Home'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import Container from '@mui/material/Container'
+import CircularProgress from '@mui/material/CircularProgress'
+import Box from '@mui/material/Box'
+
+function PrivateRoute({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) {
+    return (
+      <Container>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
+          <CircularProgress />
+        </Box>
+      </Container>
+    )
+  }
+  if (!user) return <Navigate to="/login" replace />
+  return children
+}
 
 export default function App() {
   return (
-    <Container maxWidth="sm" style={{ marginTop: 48 }}>
-      <Stack spacing={2} alignItems="center">
-        <Typography variant="h4">Hola — Bun + React + MUI</Typography>
-        <Typography variant="body1">Proyecto listo para desarrollo y deploy en Vercel.</Typography>
-        <Stack direction="row" spacing={1}>
-          <Button variant="contained" color="primary">Acción</Button>
-          <IconButton color="primary" aria-label="home">
-            <HomeIcon />
-          </IconButton>
-        </Stack>
-      </Stack>
-    </Container>
-  );
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  )
 }
 
