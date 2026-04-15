@@ -2,6 +2,21 @@ import React from 'react'
 import AppBar from '@mui/material/AppBar'
 import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
+// Use the provided Google Maps logo image in `public/google-maps-logo.png`.
+// Vite serves files in `public/` at the project root, so the image is available at `/google-maps-logo.png`.
+function MapLogo(props) {
+  return (
+    <img
+      src="/google-maps-logo.png"
+      alt="Google Maps logo"
+      width={28}
+      height={28}
+      style={{ display: 'block' }}
+      role="img"
+      {...props}
+    />
+  )
+}
 import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
@@ -35,14 +50,14 @@ export default function NavBar() {
   return (
     <AppBar position="sticky" elevation={3} color="primary">
       <Toolbar>
-        <Typography
-          variant="h6"
-          component={RouterLink}
-          to="/"
-          sx={{ color: 'inherit', textDecoration: 'none', fontWeight: 700 }}
-        >
-          MyApp
-        </Typography>
+        <Box component={RouterLink} to="/" sx={{ display: 'flex', alignItems: 'center', color: 'inherit', textDecoration: 'none' }}>
+          <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
+            <MapLogo />
+          </Box>
+          <Typography variant="h6" sx={{ color: 'inherit', fontWeight: 700 }}>
+            Google Maps Share Location
+          </Typography>
+        </Box>
 
         <Box sx={{ flexGrow: 1 }} />
 

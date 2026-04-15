@@ -12,6 +12,13 @@ Instrucciones rápidas (Windows Command shell):
    bun add -d vite @vitejs/plugin-react
    bun add @mui/material @emotion/react @emotion/styled
    bun add @mui/icons-material  # opcional
+   bun add leaflet react-leaflet
+UserLocations (Compartir ubicación en tiempo real)
+
+1) Crear tabla en Supabase: en el SQL editor ejecuta `supabase/migrations/create_userlocations.sql` o copia su contenido. Esto crea la tabla `UserLocations` y las políticas RLS necesarias.
+
+2) Desde la app: la pantalla de inicio ahora muestra un mapa y un botón "Compartir ubicación en tiempo real" que actualizará la tabla `UserLocations` con tus coordenadas mientras esté activado.
+
 
 3) Ejecutar en desarrollo:
 
