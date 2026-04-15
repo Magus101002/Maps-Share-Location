@@ -20,10 +20,9 @@ import Paper from '@mui/material/Paper'
 import IconButton from '@mui/material/IconButton'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTheme } from '@mui/material/styles'
-import List from '@mui/material/List'
-import ListItem from '@mui/material/ListItem'
-import ListItemText from '@mui/material/ListItemText'
-import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
+import ConnectionList from '../components/ConnectionList'
+import PhoneDialog from '../components/PhoneDialog'
+import ShareLinkBox from '../components/ShareLinkBox'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -270,52 +269,7 @@ export default function Dashboard() {
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
           ) : (
-            isSm ? (
-              <List>
-                {connections.map((row) => (
-                  <Paper key={row.id} variant="outlined" sx={{ mb: 1, p: 1 }}>
-                    <ListItem>
-                      <ListItemText
-                        primary={`${row.user_linked} — ${row.code ?? ''}`}
-                        secondary={`Creado: ${new Date(row.created_at).toLocaleString()}`}
-                      />
-                      <ListItemSecondaryAction>
-                        <IconButton edge="end" size="small" onClick={() => handleOpenEdit(row)} aria-label="editar"><EditIcon /></IconButton>
-                        <IconButton edge="end" size="small" onClick={() => handleDelete(row)} aria-label="eliminar"><DeleteIcon /></IconButton>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                  </Paper>
-                ))}
-              </List>
-            ) : (
-              <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
-                <Table sx={{ minWidth: 650 }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>ID</TableCell>
-                      <TableCell>Code</TableCell>
-                      <TableCell>User Linked</TableCell>
-                      <TableCell>Creado</TableCell>
-                      <TableCell align="right">Acciones</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {connections.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell>{row.id}</TableCell>
-                        <TableCell>{row.code}</TableCell>
-                        <TableCell>{row.user_linked}</TableCell>
-                        <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
-                        <TableCell align="right">
-                          <IconButton size="small" onClick={() => handleOpenEdit(row)} aria-label="editar"><EditIcon /></IconButton>
-                          <IconButton size="small" onClick={() => handleDelete(row)} aria-label="eliminar"><DeleteIcon /></IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )
+            <ConnectionList connections={connections} isSm={isSm} onEdit={handleOpenEdit} onDelete={handleDelete} />
           )}
         </Stack>
       </Paper>
@@ -355,7 +309,7 @@ export default function Dashboard() {
                     inputProps={{ inputMode: 'numeric', pattern: '\\d*', maxLength: 8 }}
                   />
                 </Grid>
-                <Grid item xs={2} sm={2}>
+                <Grid item xs={isSm ? 12 : 2} sm={2}>
                   <Button
                     fullWidth
                     variant="contained"
@@ -383,10 +337,10 @@ export default function Dashboard() {
                   {/* generated link box */}
                   <Paper variant="outlined" sx={{ p: 1, fontFamily: 'monospace', wordBreak: 'break-all', bgcolor: '#f5f5f5' }}>
                     {(() => {
-                      const authPhone = user?.user_metadata?.phone ?? userPhoneLocal ?? ''
-                      const connPhone = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
+                      // use token of connection as single parameter
+                      const token = createdConnection?.token ?? editing?.token ?? ''
                       const base = typeof window !== 'undefined' ? window.location.origin + '/' : 'https://mi.dominio/'
-                      const params = `?conn=${encodeURIComponent(connPhone)}&user=${encodeURIComponent(authPhone)}`
+                      const params = `?t=${encodeURIComponent(token)}`
                       return `${base}${params}`
                     })()}
                   </Paper>
@@ -398,10 +352,9 @@ export default function Dashboard() {
                       color="primary"
                       startIcon={<ContentCopyIcon />}
                       onClick={() => {
-                        const authPhone = user?.user_metadata?.phone ?? userPhoneLocal ?? ''
-                        const connPhone = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
+                        const token = createdConnection?.token ?? editing?.token ?? ''
                         const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
-                        const link = `${base}/?conn=${encodeURIComponent(connPhone)}&user=${encodeURIComponent(authPhone)}`
+                        const link = `${base}/?t=${encodeURIComponent(token)}`
                         try {
                           navigator.clipboard.writeText(link)
                           setSnack({ open: true, message: 'Enlace copiado al portapapeles' })
@@ -422,9 +375,9 @@ export default function Dashboard() {
                       onClick={() => {
                         const connPhoneRaw = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
                         const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
-                        const authPhone = user?.user_metadata?.phone ?? userPhoneLocal ?? ''
+                        const token = createdConnection?.token ?? editing?.token ?? ''
                         const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
-                        const link = `${base}/?conn=${encodeURIComponent(connPhoneRaw)}&user=${encodeURIComponent(authPhone)}`
+                        const link = `${base}/?t=${encodeURIComponent(token)}`
                         // wa.me requires digits only (no +). Use encoded text param
                         const waNumber = connDigits
                         const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
@@ -456,41 +409,14 @@ export default function Dashboard() {
         </DialogActions>
       </Dialog>
 
-      {/* Dialog para añadir teléfono al usuario */}
-      <Dialog open={phoneDialogOpen} onClose={() => setPhoneDialogOpen(false)}>
-        <DialogTitle>Añadir teléfono</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'grid', gap: 2, mt: 1, width: 360 }}>
-            <Typography variant="body2">Introduce tu código de país y número (8 dígitos).</Typography>
-            <Grid container spacing={1} alignItems="center">
-              <Grid item xs={4}>
-                <TextField
-                  label="Código país"
-                  value={phoneForm.country}
-                  onChange={(e) => {
-                    let v = e.target.value || ''
-                    v = v.replace(/[^+\d]/g, '')
-                    if (!v.startsWith('+')) v = '+' + v.replace(/\+/g, '')
-                    v = v.slice(0, 4)
-                    setPhoneForm((s) => ({ ...s, country: v }))
-                  }}
-                />
-              </Grid>
-              <Grid item xs={8}>
-                <TextField
-                  label="Número"
-                  value={phoneForm.number}
-                  onChange={(e) => setPhoneForm((s) => ({ ...s, number: e.target.value.replace(/\D/g, '').slice(0,8) }))}
-                />
-              </Grid>
-            </Grid>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPhoneDialogOpen(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={handleSaveUserPhone} disabled={!(/^[+]\d{1,3}$/.test(phoneForm.country) && /^\d{8}$/.test(phoneForm.number))}>Confirmar</Button>
-        </DialogActions>
-      </Dialog>
+      <PhoneDialog
+        open={phoneDialogOpen}
+        onClose={() => setPhoneDialogOpen(false)}
+        phoneForm={phoneForm}
+        setPhoneForm={setPhoneForm}
+        onConfirm={handleSaveUserPhone}
+        disabled={!(/^[+]\d{1,3}$/.test(phoneForm.country) && /^\d{8}$/.test(phoneForm.number))}
+      />
 
       <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack((s) => ({ ...s, open: false }))} message={snack.message} />
     </Container>
