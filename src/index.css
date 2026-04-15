@@ -1,8 +1,33 @@
 :root{
-  font-family: Roboto, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial;
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --muted: #6b7280;
+  font-family: Roboto, Inter, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial;
 }
 html,body,#root{
   height:100%;
   margin:0;
 }
 
+body{
+  background: var(--bg);
+  color: #0f172a;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+.app-main{
+  padding-top: 80px; /* espacio para el AppBar */
+}
+
+/* Utilities */
+.card{
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(15,23,42,0.06);
+  padding: 20px;
+}
+
+@media (max-width:600px){
+  .app-main{ padding-top: 72px }
+}

@@ -6,6 +6,7 @@ import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import Box from '@mui/material/Box'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -29,14 +30,16 @@ export default function Login() {
   }
 
   return (
-    <Container maxWidth="sm" sx={{ mt: 8 }}>
-      <Stack spacing={2} component="form" onSubmit={handleSubmit}>
-        <Typography variant="h5">Iniciar sesión</Typography>
-        <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <TextField label="Contraseña" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        {error && <Typography color="error">{error}</Typography>}
-        <Button type="submit" variant="contained" disabled={loading}>{loading ? 'Ingresando...' : 'Entrar'}</Button>
-      </Stack>
+    <Container maxWidth="sm" sx={{ mt: 4 }}>
+      <Box className="card">
+        <Stack spacing={2} component="form" onSubmit={handleSubmit}>
+          <Typography variant="h5">Iniciar sesión</Typography>
+          <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <TextField label="Contraseña" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          {error && <Typography color="error">{error}</Typography>}
+          <Button type="submit" variant="contained" disabled={loading}>{loading ? 'Ingresando...' : 'Entrar'}</Button>
+        </Stack>
+      </Box>
     </Container>
   )
 }

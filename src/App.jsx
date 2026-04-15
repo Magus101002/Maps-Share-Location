@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Container from '@mui/material/Container'
 import CircularProgress from '@mui/material/CircularProgress'
 import Box from '@mui/material/Box'
+import NavBar from './components/NavBar'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -27,11 +28,14 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-        </Routes>
+        <NavBar />
+        <Box component="main" className="app-main" sx={{ p: { xs: 2, md: 4 }, maxWidth: '1200px', mx: 'auto' }}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+          </Routes>
+        </Box>
       </BrowserRouter>
     </AuthProvider>
   )
