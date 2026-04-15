@@ -1,0 +1,8 @@
+:root{
+  font-family: Roboto, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial;
+}
+html,body,#root{
+  height:100%;
+  margin:0;
+}
+
