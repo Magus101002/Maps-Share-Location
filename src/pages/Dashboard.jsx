@@ -18,6 +18,12 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Paper from '@mui/material/Paper'
 import IconButton from '@mui/material/IconButton'
+import useMediaQuery from '@mui/material/useMediaQuery'
+import { useTheme } from '@mui/material/styles'
+import List from '@mui/material/List'
+import ListItem from '@mui/material/ListItem'
+import ListItemText from '@mui/material/ListItemText'
+import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -33,6 +39,8 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Snackbar from '@mui/material/Snackbar'
 
 export default function Dashboard() {
+  const theme = useTheme()
+  const isSm = useMediaQuery(theme.breakpoints.down('sm'))
   const { user, logout } = useAuth()
   const [connections, setConnections] = useState([])
   const [loading, setLoading] = useState(false)
@@ -227,21 +235,23 @@ export default function Dashboard() {
   const phoneValid = (/^[+]\d{1,3}$/.test(form.user_country) && /^\d{8}$/.test(form.user_phone))
   const finalUserLinked = `${form.user_country}${form.user_phone}`
   const isCreatedForThis = createdConnection && createdConnection.user_linked === finalUserLinked
+  // show instructions also when editing an existing connection that matches the phone
+  const hasConnectionForThis = isCreatedForThis || (editing && editing.user_linked === finalUserLinked)
   const userHasPhone = Boolean(user?.user_metadata?.phone) || Boolean(userPhoneLocal)
 
   return (
     <Container maxWidth="md" sx={{ mt: 4 }}>
-      <Box className="card">
+      <Paper sx={{ p: { xs: 1, sm: 2 }, borderRadius: 2 }}>
         <Stack spacing={2}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction={isSm ? 'column' : 'row'} justifyContent="space-between" alignItems={isSm ? 'flex-start' : 'center'}>
             <Typography variant="h4">Dashboard</Typography>
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: isSm ? 1 : 0 }}>
               <Typography variant="body2">{user?.email ?? ''}</Typography>
               <Button variant="outlined" onClick={handleLogout}>Cerrar sesión</Button>
             </Stack>
           </Stack>
 
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction={isSm ? 'column' : 'row'} justifyContent="space-between" alignItems={isSm ? 'flex-start' : 'center'}>
             <Typography variant="h6">Tus conexiones</Typography>
             <Button startIcon={<AddIcon />} variant="contained" onClick={handleOpenCreate}>Nueva</Button>
           </Stack>
@@ -260,36 +270,55 @@ export default function Dashboard() {
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
           ) : (
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>ID</TableCell>
-                    <TableCell>Code</TableCell>
-                    <TableCell>User Linked</TableCell>
-                    <TableCell>Creado</TableCell>
-                    <TableCell align="right">Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {connections.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>{row.id}</TableCell>
-                      <TableCell>{row.code}</TableCell>
-                      <TableCell>{row.user_linked}</TableCell>
-                      <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
-                      <TableCell align="right">
-                        <IconButton size="small" onClick={() => handleOpenEdit(row)}><EditIcon /></IconButton>
-                        <IconButton size="small" onClick={() => handleDelete(row)}><DeleteIcon /></IconButton>
-                      </TableCell>
+            isSm ? (
+              <List>
+                {connections.map((row) => (
+                  <Paper key={row.id} variant="outlined" sx={{ mb: 1, p: 1 }}>
+                    <ListItem>
+                      <ListItemText
+                        primary={`${row.user_linked} — ${row.code ?? ''}`}
+                        secondary={`Creado: ${new Date(row.created_at).toLocaleString()}`}
+                      />
+                      <ListItemSecondaryAction>
+                        <IconButton edge="end" size="small" onClick={() => handleOpenEdit(row)} aria-label="editar"><EditIcon /></IconButton>
+                        <IconButton edge="end" size="small" onClick={() => handleDelete(row)} aria-label="eliminar"><DeleteIcon /></IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  </Paper>
+                ))}
+              </List>
+            ) : (
+              <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
+                <Table sx={{ minWidth: 650 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ID</TableCell>
+                      <TableCell>Code</TableCell>
+                      <TableCell>User Linked</TableCell>
+                      <TableCell>Creado</TableCell>
+                      <TableCell align="right">Acciones</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {connections.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>{row.id}</TableCell>
+                        <TableCell>{row.code}</TableCell>
+                        <TableCell>{row.user_linked}</TableCell>
+                        <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" onClick={() => handleOpenEdit(row)} aria-label="editar"><EditIcon /></IconButton>
+                          <IconButton size="small" onClick={() => handleDelete(row)} aria-label="eliminar"><DeleteIcon /></IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )
           )}
         </Stack>
-      </Box>
+      </Paper>
 
       <Dialog open={open} onClose={handleClose} fullWidth>
         <DialogTitle>{editing ? 'Editar conexión' : 'Nueva conexión'}</DialogTitle>
@@ -332,18 +361,18 @@ export default function Dashboard() {
                     variant="contained"
                     color="success"
                     startIcon={<CheckCircleIcon />}
-                    onClick={handleCreateFromPhone}
-                    disabled={!phoneValid || isCreatedForThis || !userHasPhone}
+                    onClick={editing ? () => handleSubmit() : handleCreateFromPhone}
+                    disabled={!phoneValid || !userHasPhone || (!editing && hasConnectionForThis)}
                     aria-label="Crear conexión"
                   >
-                    {isCreatedForThis ? 'Creado' : 'Crear'}
+                    {editing ? 'Modificar' : (hasConnectionForThis ? 'Creado' : 'Crear')}
                   </Button>
                 </Grid>
               </Grid>
             </Box>
 
-            {/* If a connection was created for this phone, show instructions and ask for the external code; otherwise show the Code field as before */}
-            {isCreatedForThis ? (
+            {/* If a connection exists for this phone (created now or editing), show instructions and ask for the external code; otherwise show the Code field as before */}
+            {hasConnectionForThis ? (
               <Box sx={{ display: 'grid', gap: 1 }}>
                 <Typography variant="body2">Ve al siguiente <a href="https://example.com" target="_blank" rel="noopener noreferrer">enlace</a> e introduce el código de país y el número que has puesto.</Typography>
 
@@ -355,7 +384,7 @@ export default function Dashboard() {
                   <Paper variant="outlined" sx={{ p: 1, fontFamily: 'monospace', wordBreak: 'break-all', bgcolor: '#f5f5f5' }}>
                     {(() => {
                       const authPhone = user?.user_metadata?.phone ?? userPhoneLocal ?? ''
-                      const connPhone = createdConnection?.user_linked ?? finalUserLinked
+                      const connPhone = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
                       const base = typeof window !== 'undefined' ? window.location.origin + '/' : 'https://mi.dominio/'
                       const params = `?conn=${encodeURIComponent(connPhone)}&user=${encodeURIComponent(authPhone)}`
                       return `${base}${params}`
@@ -370,7 +399,7 @@ export default function Dashboard() {
                       startIcon={<ContentCopyIcon />}
                       onClick={() => {
                         const authPhone = user?.user_metadata?.phone ?? userPhoneLocal ?? ''
-                        const connPhone = createdConnection?.user_linked ?? finalUserLinked
+                        const connPhone = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
                         const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
                         const link = `${base}/?conn=${encodeURIComponent(connPhone)}&user=${encodeURIComponent(authPhone)}`
                         try {
@@ -391,7 +420,7 @@ export default function Dashboard() {
                       color="success"
                       startIcon={<WhatsAppIcon />}
                       onClick={() => {
-                        const connPhoneRaw = createdConnection?.user_linked ?? finalUserLinked
+                        const connPhoneRaw = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
                         const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
                         const authPhone = user?.user_metadata?.phone ?? userPhoneLocal ?? ''
                         const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
