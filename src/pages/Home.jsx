@@ -62,24 +62,74 @@ export default function Home() {
   const markerRef = useRef(null)
   const [snack, setSnack] = useState({ open: false, message: '' })
   const [locating, setLocating] = useState(true)
+  const [permissionState, setPermissionState] = useState(null) // 'granted' | 'prompt' | 'denied' | null
+  const [showPermissionHelp, setShowPermissionHelp] = useState(false)
 
   useEffect(() => {
-    // Try to get current position once
+    // Check for geolocation support and permission status, then try to obtain position
     if (!navigator.geolocation) {
       setSnack({ open: true, message: 'Geolocation no soportado por este navegador.' })
+      setLocating(false)
       return
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setPosition([pos.coords.latitude, pos.coords.longitude])
-        setLocating(false)
-      },
-      (err) => {
-        setSnack({ open: true, message: `Error geolocalización: ${err.message}` })
-        setLocating(false)
-      },
-      { enableHighAccuracy: true }
-    )
+
+    // Helper to actually request the position (triggers browser prompt if state is 'prompt')
+    const requestPosition = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setPosition([pos.coords.latitude, pos.coords.longitude])
+          setLocating(false)
+          setPermissionState('granted')
+          setShowPermissionHelp(false)
+        },
+        (err) => {
+          setLocating(false)
+          // If permission denied, show help UI to enable location
+          if (err.code === 1) {
+            setPermissionState('denied')
+            setShowPermissionHelp(true)
+            setSnack({ open: true, message: 'Permiso de ubicación denegado. Activa la ubicación y recarga la página o utiliza el botón de ayuda.' })
+          } else {
+            setSnack({ open: true, message: `Error geolocalización: ${err.message}` })
+          }
+        },
+        { enableHighAccuracy: true }
+      )
+    }
+
+    // If Permissions API is available, use it to determine current state
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((res) => {
+          setPermissionState(res.state)
+          if (res.state === 'granted') {
+            // directly request position
+            requestPosition()
+          } else if (res.state === 'prompt') {
+            // trigger prompt
+            requestPosition()
+          } else if (res.state === 'denied') {
+            setLocating(false)
+            setShowPermissionHelp(true)
+            setSnack({ open: true, message: 'Permiso de ubicación denegado. Activa la ubicación en los ajustes del dispositivo.' })
+          }
+
+          // listen for changes in permission state
+          try {
+            res.onchange = () => setPermissionState(res.state)
+          } catch (e) {
+            // ignore if not supported
+          }
+        })
+        .catch(() => {
+          // fallback: just request position which will either succeed or show prompt
+          requestPosition()
+        })
+    } else {
+      // Permissions API not available: attempt to request position (browser will prompt or fail)
+      requestPosition()
+    }
   }, [])
 
   // Auto open popup is handled inside MapContainer by AutoOpenPopup component
@@ -87,6 +137,10 @@ export default function Home() {
   const startSharing = () => {
     if (!navigator.geolocation) return setSnack({ open: true, message: 'Geolocation no disponible' })
     if (sharing) return
+    if (permissionState === 'denied') {
+      setShowPermissionHelp(true)
+      return setSnack({ open: true, message: 'Permiso de ubicación denegado. Abre ajustes para activarlo.' })
+    }
     // start watchPosition
     const id = navigator.geolocation.watchPosition(
       async (pos) => {
@@ -133,6 +187,34 @@ export default function Home() {
 
   return (
     <Box sx={{ width: '100%', overflow: 'hidden' }}>
+      {/* Permission help overlay: muestra instrucciones cuando el permiso está denegado */}
+      {showPermissionHelp && (
+        <Box sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1500 }}>
+          <Paper elevation={6} sx={{ p: 2, minWidth: 300 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Permiso de ubicación denegado</Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>Para compartir tu ubicación debes permitir el acceso al GPS en la configuración del navegador o del dispositivo.</Typography>
+            <Box sx={{ display: 'flex', gap: 1, mt: 2, justifyContent: 'flex-end' }}>
+              <Button size="small" onClick={() => { setShowPermissionHelp(false); navigator.geolocation.getCurrentPosition(() => {}, () => {}, { enableHighAccuracy: true }) }}>Volver a solicitar</Button>
+              <Button size="small" variant="contained" onClick={() => {
+                // intentar abrir ajustes en Android vía intent (funciona en Chrome Android si el dispositivo lo permite)
+                const isAndroid = /Android/i.test(navigator.userAgent)
+                if (isAndroid) {
+                  // Intent URL to open location settings
+                  const intentUrl = 'intent:#Intent;action=android.settings.LOCATION_SOURCE_SETTINGS;end'
+                  window.location.href = intentUrl
+                } else {
+                  // En otros dispositivos, abrir instrucciones o la página de configuración de contenido de Chrome (si funciona)
+                  try {
+                    window.open('chrome://settings/content/location')
+                  } catch (e) {
+                    // nothing
+                  }
+                }
+              }}>Abrir ajustes</Button>
+            </Box>
+          </Paper>
+        </Box>
+      )}
       <Box sx={{ position: 'relative', height: { xs: `calc(100vh - 64px)`, md: `calc(100vh - 64px)` }, width: '100%' }}>
         {/* Map */}
         <MapContainer center={position ?? [0, 0]} zoom={position ? 15 : 2} style={{ height: '100%', width: '100%' }}>
