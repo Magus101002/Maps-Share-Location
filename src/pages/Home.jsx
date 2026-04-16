@@ -70,7 +70,9 @@ function AutoOpenPopup({ position, markerRef }) {
 export default function Home() {
   const { user } = useAuth()
   const theme = useTheme()
-  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
+  // keep track of small screens to adapt dialog layout, but do NOT use fullScreen dialog
+  const fullScreen = false
+  const isNarrow = useMediaQuery('(max-width:420px)')
   const [position, setPosition] = useState(null)
   const [sharing, setSharing] = useState(false)
   const watchRef = useRef(null)
@@ -401,11 +403,13 @@ export default function Home() {
 
       {locating && (
         <Box sx={{ position: 'fixed', inset: 0, zIndex: 1400, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <Paper elevation={8} sx={{ p: 3, display: 'flex', gap: 2, alignItems: 'center', pointerEvents: 'auto', borderRadius: 2 }}>
-            <CircularProgress />
-            <Box>
-              <Typography variant="h6">Localizando...</Typography>
-              <Typography variant="body2" color="text.secondary">Obteniendo tu ubicación. Por favor permite el acceso al GPS.</Typography>
+          <Paper elevation={8} sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center', pointerEvents: 'auto', borderRadius: 2, mx: 1, width: { xs: 'calc(100% - 32px)', sm: 400 } }}>
+            <Box sx={{ width: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CircularProgress size={36} />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>Localizando...</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: 12, sm: 14 } }}>Obteniendo tu ubicación. Por favor permite el acceso al GPS.</Typography>
             </Box>
           </Paper>
         </Box>
@@ -418,32 +422,35 @@ export default function Home() {
         setTokenDialogCode('')
         if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
         try { tokenChannelRef.current?.unsubscribe() } catch (e) {}
-      }} fullWidth maxWidth="xs" fullScreen={fullScreen}>
+      }} fullWidth maxWidth="xs" PaperProps={{ sx: { m: { xs: 1, sm: 2 }, width: 'auto', maxWidth: 520 } }}>
         <DialogTitle>{tokenDialogLoading ? 'Generando enlace...' : (tokenDialogCode ? 'Enlace listo' : 'Esperando')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'grid', gap: 1, width: '100%', p: 1, boxSizing: 'border-box' }}>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              {tokenDialogLoading ? <CircularProgress size={24} /> : null}
+              {tokenDialogLoading ? (
+                <Box sx={{ width: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress size={24} /></Box>
+              ) : null}
               <Box>
                 <Typography variant="body2">{tokenDialogMessage || (tokenDialogCode ? 'Código disponible' : '')}</Typography>
                 {tokenDialogCode ? (
                   <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
-                      {(() => {
-                        const raw = (tokenDialogCode || tokenConnection?.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
-                        const chars = raw.split('')
-                        // build elements and insert dash after 4th
-                        const elems = []
-                        for (let i = 0; i < chars.length; i++) {
-                          if (i === 4) elems.push(<Box key={`dash-${i}`} sx={{ px: 0.5 }}>-</Box>)
-                          elems.push(
-                            <Box key={i} sx={{ minWidth: { xs: 28, sm: 36 }, height: { xs: 28, sm: 36 }, border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 700, bgcolor: 'background.paper', px: 0.5 }}>
-                              {chars[i]}
-                            </Box>
+                        {(() => {
+                          const raw = (tokenDialogCode || tokenConnection?.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+                          const chars = raw.split('')
+                          const elems = []
+                          for (let i = 0; i < chars.length; i++) {
+                            if (i === 4) elems.push(<Box key={`dash-${i}`} sx={{ px: 0.5, fontSize: { xs: 12, sm: 14 } }}>-</Box>)
+                            elems.push(
+                              <Box key={i} sx={{ minWidth: { xs: 20, sm: 36 }, height: { xs: 24, sm: 36 }, border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 700, bgcolor: 'background.paper', px: 0.5, fontSize: { xs: 12, sm: 16 } }}>
+                                {chars[i]}
+                              </Box>
+                            )
+                          }
+                          return (
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center', overflowX: 'auto', px: 1 }}>{elems}</Box>
                           )
-                        }
-                        return elems
-                      })()}
+                        })()}
                     </Box>
                     <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                       <Button size="small" variant="contained" startIcon={<ContentCopyIcon />} onClick={() => {
@@ -486,8 +493,8 @@ export default function Home() {
                 {/* show waiting/loading while is_approved is not true */}
                 {!(tokenConnection?.is_approved) ? (
                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}>
-                    <CircularProgress size={20} />
-                    <Typography variant="body2">Esperando por la vinculacion...</Typography>
+                    <Box sx={{ width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress size={20} /></Box>
+                    <Typography variant="body2" sx={{ fontSize: { xs: 12, sm: 14 } }}>Esperando por la vinculacion...</Typography>
                   </Box>
                 ) : (
                   <Alert severity="success" sx={{ mt: 1 }}>Vinculacion realizada existosamente</Alert>
@@ -496,7 +503,7 @@ export default function Home() {
             ) : null}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ flexDirection: fullScreen ? 'column' : 'row', gap: 1 }}>
+        <DialogActions sx={{ flexDirection: isNarrow ? 'column' : 'row', gap: 1 }}>
           <Button onClick={() => {
             // close dialog and cleanup
             setTokenDialogOpen(false)
@@ -540,7 +547,7 @@ export default function Home() {
               } else {
                 setSnack({ open: true, message: 'Geolocalización no disponible' })
               }
-            }} sx={{ width: fullScreen ? '100%' : 'auto' }}>Compartir</Button>
+            }} sx={{ width: isNarrow ? '100%' : 'auto' }}>Compartir</Button>
           ) : null}
         </DialogActions>
       </Dialog>
