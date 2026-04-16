@@ -1,11 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabaseClient'
-import Container from '@mui/material/Container'
+import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
-import Stack from '@mui/material/Stack'
-import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import Grid from '@mui/material/Grid'
 import InputAdornment from '@mui/material/InputAdornment'
@@ -17,6 +15,10 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Paper from '@mui/material/Paper'
+import Avatar from '@mui/material/Avatar'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
+import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTheme } from '@mui/material/styles'
@@ -51,6 +53,7 @@ export default function Dashboard() {
   const [phoneDialogOpen, setPhoneDialogOpen] = useState(false)
   const [phoneForm, setPhoneForm] = useState({ country: '+53', number: '' })
   const [snack, setSnack] = useState({ open: false, message: '' })
+  const [profileAnchor, setProfileAnchor] = useState(null)
 
   const fetchConnections = useCallback(async () => {
     if (!user) return
@@ -72,6 +75,10 @@ export default function Dashboard() {
   useEffect(() => {
     fetchConnections()
   }, [fetchConnections])
+
+  // Profile menu handlers
+  const openProfileMenu = (e) => setProfileAnchor(e.currentTarget)
+  const closeProfileMenu = () => setProfileAnchor(null)
 
   useEffect(() => {
     if (!user) return
@@ -231,48 +238,105 @@ export default function Dashboard() {
     else setSnack({ open: true, message: 'Conexión eliminada' })
     fetchConnections()
   }
+
+  // Save code to the current connection (editing or created)
+  const handleSaveCode = async () => {
+    const conn = createdConnection ?? editing
+    if (!conn || !conn.id) return setSnack({ open: true, message: 'No existe la conexión para guardar el código' })
+    // ensure user_linked exists
+    const linked = conn.user_linked || ''
+    if (!linked) return setSnack({ open: true, message: 'No hay número vinculado en la conexión' })
+
+    try {
+      const { data, error } = await supabase
+        .from('Connection')
+        .update({ code: form.code })
+        .eq('id', conn.id)
+        .select()
+
+      if (error) throw error
+      const updated = Array.isArray(data) ? data[0] : data
+      setSnack({ open: true, message: 'Código guardado' })
+      // sync local state
+      setCreatedConnection((c) => (c && c.id === updated.id ? updated : c))
+      if (editing && editing.id === updated.id) setEditing(updated)
+    } catch (err) {
+      setSnack({ open: true, message: `Error guardando código: ${err.message}` })
+    }
+  }
+
+  // Mark connection as approved (is_approved = true)
+  const handleApprove = async () => {
+    const conn = createdConnection ?? editing
+    if (!conn || !conn.id) return setSnack({ open: true, message: 'No existe la conexión' })
+    try {
+      const { data, error } = await supabase
+        .from('Connection')
+        .update({ is_approved: true })
+        .eq('id', conn.id)
+        .select()
+      if (error) throw error
+      const updated = Array.isArray(data) ? data[0] : data
+      setSnack({ open: true, message: 'Vinculación marcada como realizada' })
+      setCreatedConnection((c) => (c && c.id === updated.id ? updated : c))
+      if (editing && editing.id === updated.id) setEditing(updated)
+    } catch (err) {
+      setSnack({ open: true, message: `Error marcando vinculación: ${err.message}` })
+    }
+  }
   const phoneValid = (/^[+]\d{1,3}$/.test(form.user_country) && /^\d{8}$/.test(form.user_phone))
   const finalUserLinked = `${form.user_country}${form.user_phone}`
   const isCreatedForThis = createdConnection && createdConnection.user_linked === finalUserLinked
   // show instructions also when editing an existing connection that matches the phone
   const hasConnectionForThis = isCreatedForThis || (editing && editing.user_linked === finalUserLinked)
   const userHasPhone = Boolean(user?.user_metadata?.phone) || Boolean(userPhoneLocal)
-
   return (
-    <Container maxWidth="md" sx={{ mt: 4 }}>
-      <Paper sx={{ p: { xs: 1, sm: 2 }, borderRadius: 2 }}>
-        <Stack spacing={2}>
-          <Stack direction={isSm ? 'column' : 'row'} justifyContent="space-between" alignItems={isSm ? 'flex-start' : 'center'}>
-            <Typography variant="h4">Dashboard</Typography>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: isSm ? 1 : 0 }}>
-              <Typography variant="body2">{user?.email ?? ''}</Typography>
-              <Button variant="outlined" onClick={handleLogout}>Cerrar sesión</Button>
-            </Stack>
-          </Stack>
+    <Box sx={{ width: '100%', minHeight: '100vh', p: { xs: 1, sm: 2 }, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Top bar */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box>
+          <Typography variant="h4">Dashboard</Typography>
+          <Typography variant="body2" color="text.secondary">Gestiona tus conexiones</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Button startIcon={<AddIcon />} variant="contained" onClick={handleOpenCreate}>Nueva</Button>
+          <IconButton onClick={openProfileMenu} size="small" sx={{ ml: 1 }} aria-label="perfil">
+            <Avatar sx={{ width: 36, height: 36 }}>{(user?.email || '?').charAt(0).toUpperCase()}</Avatar>
+          </IconButton>
+          <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={closeProfileMenu}>
+            <MenuItem disabled>
+              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                <Typography variant="body2">{user?.email ?? ''}</Typography>
+                <Typography variant="caption" color="text.secondary">{user?.user_metadata?.phone ?? userPhoneLocal ?? 'Sin teléfono'}</Typography>
+              </Box>
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={() => { closeProfileMenu(); openPhoneDialog(); }}>Editar teléfono</MenuItem>
+            <MenuItem onClick={() => { closeProfileMenu(); handleLogout(); }}>Cerrar sesión</MenuItem>
+          </Menu>
+        </Box>
+      </Box>
 
-          <Stack direction={isSm ? 'column' : 'row'} justifyContent="space-between" alignItems={isSm ? 'flex-start' : 'center'}>
-            <Typography variant="h6">Tus conexiones</Typography>
-            <Button startIcon={<AddIcon />} variant="contained" onClick={handleOpenCreate}>Nueva</Button>
-          </Stack>
+      {/* Main content area */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {/* Alerts */}
+        {!userHasPhone && (
+          <Alert severity="warning" action={
+            <Button color="inherit" size="small" onClick={openPhoneDialog}>Añadir teléfono</Button>
+          }>
+            Es requerido que añadas un teléfono en tu cuenta para crear conexiones.
+          </Alert>
+        )}
 
-          {/* Si el usuario no tiene teléfono, mostrar alerta debajo del navbar con botón para añadir */}
-          {!userHasPhone && (
-            <Box sx={{ mt: 2 }}>
-              <Alert severity="warning" action={
-                <Button color="inherit" size="small" onClick={openPhoneDialog}>Añadir teléfono</Button>
-              }>
-                Es requerido que añadas un teléfono en tu cuenta para crear conexiones.
-              </Alert>
-            </Box>
-          )}
-
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
-          ) : (
+        {/* Connections list / table */}
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+        ) : (
+          <Box sx={{ flex: 1, overflow: 'auto' }}>
             <ConnectionList connections={connections} isSm={isSm} onEdit={handleOpenEdit} onDelete={handleDelete} />
-          )}
-        </Stack>
-      </Paper>
+          </Box>
+        )}
+      </Box>
 
       <Dialog open={open} onClose={handleClose} fullWidth>
         <DialogTitle>{editing ? 'Editar conexión' : 'Nueva conexión'}</DialogTitle>
@@ -314,7 +378,6 @@ export default function Dashboard() {
                     fullWidth
                     variant="contained"
                     color="success"
-                    startIcon={<CheckCircleIcon />}
                     onClick={editing ? () => handleSubmit() : handleCreateFromPhone}
                     disabled={!phoneValid || !userHasPhone || (!editing && hasConnectionForThis)}
                     aria-label="Crear conexión"
@@ -391,15 +454,48 @@ export default function Dashboard() {
                 </Box>
 
                 <FormHelperText>Cuando obtengas el código, póngalo aquí debajo</FormHelperText>
-                <TextField
-                  label="Código obtenido"
-                  value={form.code}
-                  onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))}
-                  fullWidth
-                />
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <TextField
+                    label="Código"
+                    value={form.code}
+                    onChange={(e) => {
+                      const v = (e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+                      setForm((s) => ({ ...s, code: v }))
+                    }}
+                    fullWidth
+                    inputProps={{ maxLength: 8 }}
+                    disabled={!((createdConnection?.user_linked) || (editing?.user_linked))}
+                    helperText="Máximo 8 caracteres. Letras se convierten a mayúsculas."
+                  />
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleSaveCode}
+                    disabled={!((createdConnection?.user_linked) || (editing?.user_linked)) || form.code.length !== 8}
+                  >Guardar</Button>
+                </Box>
+
+                {/* After code is present, show instruction and approve button */}
+                {((createdConnection?.code) || (editing?.code)) ? (
+                  <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
+                    <Typography variant="body2">Esperando que el usuario haga la vinculación.</Typography>
+                    <Button variant="contained" color="success" onClick={handleApprove} disabled={(createdConnection?.is_approved) || (editing?.is_approved)}>
+                      Marcar vinculación como realizada
+                    </Button>
+                  </Box>
+                ) : null}
               </Box>
             ) : (
-              <TextField label="Code" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
+              <TextField
+                label="Código"
+                value={form.code}
+                onChange={(e) => {
+                  const v = (e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+                  setForm((s) => ({ ...s, code: v }))
+                }}
+                inputProps={{ maxLength: 8 }}
+                helperText="Máximo 8 caracteres. Letras se convierten a mayúsculas."
+              />
             )}
           </Box>
         </DialogContent>
@@ -419,7 +515,7 @@ export default function Dashboard() {
       />
 
       <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack((s) => ({ ...s, open: false }))} message={snack.message} />
-    </Container>
+    </Box>
   )
 }
 

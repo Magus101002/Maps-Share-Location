@@ -10,6 +10,7 @@ import List from '@mui/material/List'
 import ListItem from '@mui/material/ListItem'
 import ListItemText from '@mui/material/ListItemText'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
+import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -18,16 +19,20 @@ export default function ConnectionList({ connections, isSm, onEdit, onDelete }) 
   if (isSm) {
     return (
       <List>
-        {connections.map((row) => (
-          <Paper key={row.id} variant="outlined" sx={{ mb: 1, p: 1 }}>
-            <ListItem>
-              <ListItemText primary={`${row.user_linked} — ${row.code ?? ''}`} secondary={`Creado: ${new Date(row.created_at).toLocaleString()}`} />
+        {connections.map((row, idx) => (
+          <React.Fragment key={row.id}>
+            <ListItem sx={{ py: 1, px: 0 }}>
+              <ListItemText
+                primary={<span style={{ fontWeight: 700 }}>{row.user_linked || '—'}</span>}
+                secondary={<span style={{ fontSize: 12 }}>{`Código: ${row.code || '—'} • Creado: ${new Date(row.created_at).toLocaleString()}`}</span>}
+              />
               <ListItemSecondaryAction>
                 <IconButton edge="end" size="small" onClick={() => onEdit(row)} aria-label="editar"><EditIcon /></IconButton>
                 <IconButton edge="end" size="small" onClick={() => onDelete(row)} aria-label="eliminar"><DeleteIcon /></IconButton>
               </ListItemSecondaryAction>
             </ListItem>
-          </Paper>
+            {idx < connections.length - 1 ? <Divider component="li" /> : null}
+          </React.Fragment>
         ))}
       </List>
     )
