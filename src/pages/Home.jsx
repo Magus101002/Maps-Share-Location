@@ -11,6 +11,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabaseClient'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
+import List from '@mui/material/List'
+import ListItem from '@mui/material/ListItem'
+import ListItemIcon from '@mui/material/ListItemIcon'
+import ListItemText from '@mui/material/ListItemText'
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -453,7 +458,27 @@ export default function Home() {
             {/* Instructions and waiting for approval */}
             {tokenDialogCode ? (
               <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
-                <Typography variant="body2">Sigue las instrucciones en el chat con el usuario. Una vez que el usuario haya completado la vinculación, marque la conexión como vinculada.</Typography>
+                {/* Lista de instrucciones en puntos */}
+                {(() => {
+                  const instructions = [
+                    'Copia el código mostrado arriba.',
+                    'Abre la notificación de WhatsApp y pega el código.',
+                    'Alternativamente, abre WhatsApp y presiona "Dispositos Vinculados" en el menu de puntos.',
+                    'Pega el pega el código.'
+                  ]
+                  return (
+                    <List dense sx={{ p: 0, mt: 0 }}>
+                      {instructions.map((it, i) => (
+                        <ListItem key={i} sx={{ py: 0.5 }}>
+                          <ListItemIcon sx={{ minWidth: 28 }}>
+                            <FiberManualRecordIcon sx={{ fontSize: 12 }} />
+                          </ListItemIcon>
+                          <ListItemText primary={it} primaryTypographyProps={{ variant: 'body2' }} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )
+                })()}
                 {/* show waiting/loading while is_approved is not true */}
                 {!(tokenConnection?.is_approved) ? (
                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}>

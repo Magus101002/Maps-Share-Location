@@ -391,7 +391,7 @@ export default function Dashboard() {
             {/* If a connection exists for this phone (created now or editing), show instructions and ask for the external code; otherwise show the Code field as before */}
             {hasConnectionForThis ? (
               <Box sx={{ display: 'grid', gap: 1 }}>
-                <Typography variant="body2">Ve al siguiente <a href="https://example.com" target="_blank" rel="noopener noreferrer">enlace</a> e introduce el código de país y el número que has puesto.</Typography>
+                <Typography variant="body2">Ve al siguiente <a href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer">WhatsApp Web</a> e introduce el código de país y el número que has puesto.</Typography>
 
                 {/* Nueva instrucción: generar enlace y actions - colocada justo debajo de la instrucción anterior */}
                 <Box sx={{ mt: 0.5 }}>
