@@ -11,6 +11,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabaseClient'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
+import useMediaQuery from '@mui/material/useMediaQuery'
+import { useTheme } from '@mui/material/styles'
 import List from '@mui/material/List'
 import ListItem from '@mui/material/ListItem'
 import ListItemIcon from '@mui/material/ListItemIcon'
@@ -67,6 +69,8 @@ function AutoOpenPopup({ position, markerRef }) {
 
 export default function Home() {
   const { user } = useAuth()
+  const theme = useTheme()
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const [position, setPosition] = useState(null)
   const [sharing, setSharing] = useState(false)
   const watchRef = useRef(null)
@@ -414,17 +418,17 @@ export default function Home() {
         setTokenDialogCode('')
         if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
         try { tokenChannelRef.current?.unsubscribe() } catch (e) {}
-      }}>
+      }} fullWidth maxWidth="xs" fullScreen={fullScreen}>
         <DialogTitle>{tokenDialogLoading ? 'Generando enlace...' : (tokenDialogCode ? 'Enlace listo' : 'Esperando')}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'grid', gap: 1, minWidth: 320, p: 1 }}>
+          <Box sx={{ display: 'grid', gap: 1, width: '100%', p: 1, boxSizing: 'border-box' }}>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
               {tokenDialogLoading ? <CircularProgress size={24} /> : null}
               <Box>
                 <Typography variant="body2">{tokenDialogMessage || (tokenDialogCode ? 'Código disponible' : '')}</Typography>
                 {tokenDialogCode ? (
                   <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
                       {(() => {
                         const raw = (tokenDialogCode || tokenConnection?.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
                         const chars = raw.split('')
@@ -433,7 +437,7 @@ export default function Home() {
                         for (let i = 0; i < chars.length; i++) {
                           if (i === 4) elems.push(<Box key={`dash-${i}`} sx={{ px: 0.5 }}>-</Box>)
                           elems.push(
-                            <Box key={i} sx={{ minWidth: 36, height: 36, border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 700, bgcolor: 'background.paper' }}>
+                            <Box key={i} sx={{ minWidth: { xs: 28, sm: 36 }, height: { xs: 28, sm: 36 }, border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 700, bgcolor: 'background.paper', px: 0.5 }}>
                               {chars[i]}
                             </Box>
                           )
@@ -492,14 +496,14 @@ export default function Home() {
             ) : null}
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexDirection: fullScreen ? 'column' : 'row', gap: 1 }}>
           <Button onClick={() => {
             // close dialog and cleanup
             setTokenDialogOpen(false)
             setTokenDialogLoading(false)
             if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
             try { tokenChannelRef.current?.unsubscribe() } catch (e) {}
-          }}>Cerrar</Button>
+          }} sx={{ width: fullScreen ? '100%' : 'auto' }}>Cerrar</Button>
           {tokenDialogCode && tokenConnection?.is_approved ? (
             <Button variant="contained" onClick={() => {
               // send WhatsApp with current location to connection phone
@@ -536,7 +540,7 @@ export default function Home() {
               } else {
                 setSnack({ open: true, message: 'Geolocalización no disponible' })
               }
-            }}>Compartir</Button>
+            }} sx={{ width: fullScreen ? '100%' : 'auto' }}>Compartir</Button>
           ) : null}
         </DialogActions>
       </Dialog>
