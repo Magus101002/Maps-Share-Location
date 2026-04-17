@@ -40,45 +40,47 @@ function Recenter({ position }) {
   const map = useMap()
   useEffect(() => {
     if (position) {
-      const zoom = 15
-      map.setView(position, zoom)
-    }
-  }, [position, map])
-  return null
-}
-
-function AutoOpenPopup({ position, markerRef }) {
-  const map = useMap()
-  useEffect(() => {
-    if (!position) return
-    const t = setTimeout(() => {
-      try {
-        if (markerRef?.current && typeof markerRef.current.openPopup === 'function') {
-          markerRef.current.openPopup()
-        } else if (markerRef?.current && markerRef.current.getPopup) {
-          const popup = markerRef.current.getPopup()
-          if (popup && map) popup.openOn(map)
-        }
-      } catch (e) {
-        // ignore
-      }
-    }, 200)
-    return () => clearTimeout(t)
-  }, [position, markerRef, map])
-  return null
-}
-
-
-export default function Home() {
-  const { user } = useAuth()
-  const theme = useTheme()
-  // keep track of small screens to adapt dialog layout, but do NOT use fullScreen dialog
-  const fullScreen = false
-  const isNarrow = useMediaQuery('(max-width:420px)')
-  const [position, setPosition] = useState(null)
-  const [sharing, setSharing] = useState(false)
-  const watchRef = useRef(null)
-  const markerRef = useRef(null)
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="success"
+                      startIcon={<WhatsAppIcon />}
+                      onClick={() => {
+                        const connPhoneRaw = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
+                        const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
+                        const waNumber = connDigits
+                        const id = `wa-conn-${createdConnection?.id ?? editing?.id ?? 'new'}`
+                        const sendWithCoords = (lat, lng) => {
+                          const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+                          const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(maps)}`
+                          openWaUrlWithCooldown(id, waUrl)
+                        }
+                        if (isWaDisabled(id)) return
+                        if (navigator.geolocation) {
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => { sendWithCoords(pos.coords.latitude, pos.coords.longitude) },
+                            () => {
+                              // fallback: open wa with app link if geolocation not available
+                              const token = createdConnection?.token ?? editing?.token ?? ''
+                              const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
+                              const link = `${base}/?t=${encodeURIComponent(token)}`
+                              const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
+                              openWaUrlWithCooldown(id, waUrl)
+                            },
+                            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+                          )
+                        } else {
+                          const token = createdConnection?.token ?? editing?.token ?? ''
+                          const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
+                          const link = `${base}/?t=${encodeURIComponent(token)}`
+                          const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
+                          openWaUrlWithCooldown(id, waUrl)
+                        }
+                      }}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Enviar por WhatsApp
+                    </Button>
   const [snack, setSnack] = useState({ open: false, message: '' })
   const [locating, setLocating] = useState(true)
   const [permissionState, setPermissionState] = useState(null) // 'granted' | 'prompt' | 'denied' | null
@@ -97,6 +99,23 @@ export default function Home() {
   const tokenPollRef = useRef(null)
   const tokenApprovalPollRef = useRef(null)
   const [tokenConnection, setTokenConnection] = useState(null)
+  const [waDisabledIds, setWaDisabledIds] = useState([])
+
+  const isWaDisabled = (id) => waDisabledIds.includes(id)
+  const triggerWaCooldown = (id) => {
+    setWaDisabledIds((s) => [...s, id])
+    setTimeout(() => setWaDisabledIds((s) => s.filter((x) => x !== id)), 3000)
+  }
+  const openWaUrlWithCooldown = (id, url) => {
+    if (!id) id = 'wa-global'
+    if (isWaDisabled(id)) return
+    try {
+      window.open(url, '_blank')
+      triggerWaCooldown(id)
+    } catch (e) {
+      setSnack({ open: true, message: 'No se pudo abrir WhatsApp' })
+    }
+  }
 
   // keep dialog UI in sync with realtime tokenConnection updates
   useEffect(() => {
@@ -496,12 +515,14 @@ export default function Home() {
           const connPhoneRaw = tokenConnection?.user_linked ?? ''
           const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
           const token = tokenConnection?.token ?? ''
+          const id = `wa-token-${tokenConnection?.id ?? token ?? 't'}`
           const sendWithCoords = (lat, lng) => {
             const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
             const waUrl = `https://wa.me/${connDigits}?text=${encodeURIComponent(maps)}`
-            window.open(waUrl, '_blank')
+            openWaUrlWithCooldown(id, waUrl)
             setTokenDialogOpen(false)
           }
+          if (isWaDisabled(id)) return
           if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
               (pos) => sendWithCoords(pos.coords.latitude, pos.coords.longitude),

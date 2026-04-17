@@ -19,11 +19,13 @@ export default function ShareLinkBox({ createdConnection, editing, userPhoneLoca
     }
   }
 
+  const [waDisabled, setWaDisabled] = React.useState(false)
   const handleWhatsApp = () => {
+    if (waDisabled) return
     const connPhoneRaw = createdConnection?.user_linked ?? editing?.user_linked ?? ''
     const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
     const waUrl = `https://wa.me/${connDigits}?text=${encodeURIComponent(link)}`
-    window.open(waUrl, '_blank')
+    try { window.open(waUrl, '_blank'); setWaDisabled(true); setTimeout(()=>setWaDisabled(false), 3000) } catch(e) { setSnack?.({ open: true, message: 'No se pudo abrir WhatsApp' }) }
   }
 
   return (

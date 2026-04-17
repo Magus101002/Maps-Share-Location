@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [phoneDialogOpen, setPhoneDialogOpen] = useState(false)
   const [phoneForm, setPhoneForm] = useState({ country: '+53', number: '' })
   const [snack, setSnack] = useState({ open: false, message: '' })
+  const [waDisabledIds, setWaDisabledIds] = useState([])
   const [profileAnchor, setProfileAnchor] = useState(null)
   const [activeTab, setActiveTab] = useState('connections')
   const headerDescription = activeTab === 'connections' ? 'Gestiona tus conexiones' : 'Gestiona tus accesos'
@@ -130,56 +131,20 @@ export default function Dashboard() {
         { event: '*', schema: 'public', table: 'Access', filter: `user=eq.${user.id}` },
         (payload) => {
           try {
-            const newRow = payload?.new
-            const oldRow = payload?.old
-            // If we have a new row payload, update local list and any open dialog states
-            if (newRow) {
-              setAccesses((prev) => {
-                const exists = prev.some((r) => r.id === newRow.id)
-                if (exists) return prev.map((r) => (r.id === newRow.id ? newRow : r))
-                return [newRow, ...prev]
-              })
-              if (accessEditing && accessEditing.id === newRow.id) setAccessEditing(newRow)
-              if (createdAccess && createdAccess.id === newRow.id) setCreatedAccess(newRow)
-            } else if (oldRow && payload.eventType === 'DELETE') {
-              // remove deleted row
-              setAccesses((prev) => prev.filter((r) => r.id !== oldRow.id))
-              if (accessEditing && accessEditing.id === oldRow.id) setAccessEditing(null)
-              if (createdAccess && createdAccess.id === oldRow.id) setCreatedAccess(null)
-            } else {
-              // fallback: refetch full list
-              fetchAccesses()
-            }
-          } catch (e) {
-            // on any error, fallback to refetch
+            // Simple strategy: refetch accesses on any change
             fetchAccesses()
+          } catch (e) {
+            // ignore
           }
         }
       )
       .subscribe()
 
     return () => {
-      try {
-        channel.unsubscribe()
-        channel2.unsubscribe()
-      } catch (e) {
-        // ignore
-      }
+      try { channel.unsubscribe() } catch (e) {}
+      try { channel2.unsubscribe() } catch (e) {}
     }
-  }, [user, fetchConnections])
-
-  // Keep accessEditing/createdAccess in sync if the accesses array changes
-  useEffect(() => {
-    if (!accesses || accesses.length === 0) return
-    if (accessEditing) {
-      const found = accesses.find((r) => r.id === accessEditing.id)
-      if (found) setAccessEditing(found)
-    }
-    if (createdAccess) {
-      const found = accesses.find((r) => r.id === createdAccess.id)
-      if (found) setCreatedAccess(found)
-    }
-  }, [accesses])
+  }, [user, fetchConnections, fetchAccesses])
 
   const handleLogout = async () => {
     await logout()
@@ -190,6 +155,22 @@ export default function Dashboard() {
     setForm({ code: '', user_country: '+53', user_phone: '' })
     setCreatedConnection(null)
     setOpen(true)
+  }
+
+  const isWaDisabled = (id) => waDisabledIds.includes(id)
+  const triggerWaCooldown = (id) => {
+    setWaDisabledIds((s) => [...s, id])
+    setTimeout(() => setWaDisabledIds((s) => s.filter((x) => x !== id)), 3000)
+  }
+  const openWaUrlWithCooldown = (id, url) => {
+    if (!id) id = 'wa-global'
+    if (isWaDisabled(id)) return
+    try {
+      window.open(url, '_blank')
+      triggerWaCooldown(id)
+    } catch (e) {
+      setSnack({ open: true, message: 'No se pudo abrir WhatsApp' })
+    }
   }
 
   const handleDeleteAccess = async (row) => {
@@ -696,11 +677,13 @@ export default function Dashboard() {
                         const connPhoneRaw = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
                         const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
                         const waNumber = connDigits
+                        const id = `wa-conn-${createdConnection?.id ?? editing?.id ?? 'new'}`
                         const sendWithCoords = (lat, lng) => {
                           const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
                           const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(maps)}`
-                          window.open(waUrl, '_blank')
+                          openWaUrlWithCooldown(id, waUrl)
                         }
+                        if (isWaDisabled(id)) return
                         if (navigator.geolocation) {
                           navigator.geolocation.getCurrentPosition(
                             (pos) => { sendWithCoords(pos.coords.latitude, pos.coords.longitude) },
@@ -710,7 +693,7 @@ export default function Dashboard() {
                               const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
                               const link = `${base}/?t=${encodeURIComponent(token)}`
                               const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                              window.open(waUrl, '_blank')
+                              openWaUrlWithCooldown(id, waUrl)
                             },
                             { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
                           )
@@ -719,7 +702,7 @@ export default function Dashboard() {
                           const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
                           const link = `${base}/?t=${encodeURIComponent(token)}`
                           const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                          window.open(waUrl, '_blank')
+                          openWaUrlWithCooldown(id, waUrl)
                         }
                       }}
                       sx={{ textTransform: 'none' }}
@@ -855,11 +838,13 @@ export default function Dashboard() {
                       const connPhoneRaw = createdAccess?.user_linked ?? accessEditing?.user_linked ?? `${accessForm.user_country}${accessForm.user_phone}`
                       const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
                       const waNumber = connDigits
+                      const id = `wa-access-${createdAccess?.id ?? accessEditing?.id ?? 'new'}`
                       const sendWithCoords = (lat, lng) => {
                         const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
                         const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(maps)}`
-                        window.open(waUrl, '_blank')
+                        openWaUrlWithCooldown(id, waUrl)
                       }
+                      if (isWaDisabled(id)) return
                       if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
                           (pos) => { sendWithCoords(pos.coords.latitude, pos.coords.longitude) },
@@ -868,7 +853,7 @@ export default function Dashboard() {
                             const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
                             const link = `${base}/?t=${encodeURIComponent(token)}`
                             const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                            window.open(waUrl, '_blank')
+                            openWaUrlWithCooldown(id, waUrl)
                           },
                           { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
                         )
@@ -877,7 +862,7 @@ export default function Dashboard() {
                         const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
                         const link = `${base}/?t=${encodeURIComponent(token)}`
                         const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                        window.open(waUrl, '_blank')
+                        openWaUrlWithCooldown(id, waUrl)
                       }
                     }} sx={{ textTransform: 'none' }}>Enviar por WhatsApp</Button>
                   </Box>
