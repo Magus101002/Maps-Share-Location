@@ -39,48 +39,20 @@ L.Icon.Default.mergeOptions({
 function Recenter({ position }) {
   const map = useMap()
   useEffect(() => {
-    if (position) {
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="success"
-                      startIcon={<WhatsAppIcon />}
-                      onClick={() => {
-                        const connPhoneRaw = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
-                        const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
-                        const waNumber = connDigits
-                        const id = `wa-conn-${createdConnection?.id ?? editing?.id ?? 'new'}`
-                        const sendWithCoords = (lat, lng) => {
-                          const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
-                          const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(maps)}`
-                          openWaUrlWithCooldown(id, waUrl)
-                        }
-                        if (isWaDisabled(id)) return
-                        if (navigator.geolocation) {
-                          navigator.geolocation.getCurrentPosition(
-                            (pos) => { sendWithCoords(pos.coords.latitude, pos.coords.longitude) },
-                            () => {
-                              // fallback: open wa with app link if geolocation not available
-                              const token = createdConnection?.token ?? editing?.token ?? ''
-                              const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
-                              const link = `${base}/?t=${encodeURIComponent(token)}`
-                              const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                              openWaUrlWithCooldown(id, waUrl)
-                            },
-                            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-                          )
-                        } else {
-                          const token = createdConnection?.token ?? editing?.token ?? ''
-                          const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
-                          const link = `${base}/?t=${encodeURIComponent(token)}`
-                          const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                          openWaUrlWithCooldown(id, waUrl)
-                        }
-                      }}
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Enviar por WhatsApp
-                    </Button>
+    if (!position) return
+    // try setView for smooth centering; fallback to panTo
+    try {
+      if (typeof map.setView === 'function') map.setView(position, map.getZoom ? map.getZoom() : 15, { animate: true })
+      else if (typeof map.panTo === 'function') map.panTo(position)
+    } catch (e) {
+      try { map.panTo(position) } catch (err) { /* ignore */ }
+    }
+  }, [position, map])
+
+  return null
+}
+
+export default function Home() {
   const [snack, setSnack] = useState({ open: false, message: '' })
   const [locating, setLocating] = useState(true)
   const [permissionState, setPermissionState] = useState(null) // 'granted' | 'prompt' | 'denied' | null
