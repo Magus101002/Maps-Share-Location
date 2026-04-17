@@ -79,11 +79,8 @@ export default function AccessTokenDialog({
             <Box>
               <Typography variant="body2">{message || (serverCode ? 'Código disponible' : '')}</Typography>
               {serverCode ? (
-                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',gap: 1 }}>
                   {renderCodeBoxes(serverCode)}
-                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                    <Button size="small" variant="contained" startIcon={<ContentCopyIcon />} onClick={copyServerCode} sx={{ textTransform: 'none' }}>Copiar</Button>
-                  </Box>
                 </Box>
               ) : null}
 
