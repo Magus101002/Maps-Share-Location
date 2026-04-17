@@ -45,7 +45,7 @@ export default defineConfig({
                   res.setHeader = function (name, value) {
                     try {
                       // eslint-disable-next-line no-console
-                      console.log('[remove-csp-header-dev] (request) Forzando CSP (dev) para', req.url);
+                      //console.log('[remove-csp-header-dev] (request) Forzando CSP (dev) para', req.url);
                       res.setHeader('Content-Security-Policy', cspValue);
                     } catch (e) {}
                     return origSetHeader(name, value);

@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabaseClient'
 import Snackbar from '@mui/material/Snackbar'
+import TextField from '@mui/material/TextField'
 import Alert from '@mui/material/Alert'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTheme } from '@mui/material/styles'
@@ -23,6 +24,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import AccessTokenDialog from '../components/AccessTokenDialog'
 
 import iconUrl from 'leaflet/dist/images/marker-icon.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
@@ -85,11 +87,37 @@ export default function Home() {
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false)
   const [tokenDialogLoading, setTokenDialogLoading] = useState(false)
   const [tokenDialogMessage, setTokenDialogMessage] = useState('')
-  const [tokenDialogCode, setTokenDialogCode] = useState('')
+  // server-provided code (from Access row)
+  const [tokenDialogServerCode, setTokenDialogServerCode] = useState('')
+  // input typed by unauthenticated visitor
+  const [tokenDialogInput, setTokenDialogInput] = useState('')
+  const [verifyLoading, setVerifyLoading] = useState(false)
+  const [waitingApproval, setWaitingApproval] = useState(false)
   const tokenChannelRef = useRef(null)
   const tokenPollRef = useRef(null)
   const tokenApprovalPollRef = useRef(null)
   const [tokenConnection, setTokenConnection] = useState(null)
+
+  // keep dialog UI in sync with realtime tokenConnection updates
+  useEffect(() => {
+    if (!tokenConnection) return
+    // update server code when backend supplies it
+    if (tokenConnection.code) {
+      setTokenDialogServerCode(tokenConnection.code)
+      // if we were verifying, stop spinner
+      setVerifyLoading(false)
+      setTokenDialogMessage('Código disponible')
+    }
+    if (tokenConnection.is_requested) {
+      setVerifyLoading(false)
+      setWaitingApproval(true)
+    }
+    if (tokenConnection.is_approved) {
+      setVerifyLoading(false)
+      setWaitingApproval(false)
+      setTokenDialogMessage('Vinculación realizada existosamente')
+    }
+  }, [tokenConnection])
 
   useEffect(() => {
     // Check for geolocation support and permission status, then try to obtain position
@@ -202,10 +230,10 @@ export default function Home() {
     setSnack({ open: true, message: 'Compartiendo ubicación en tiempo real' })
   }
 
-  // Helper: fetch connection by token
-  const fetchConnectionByToken = async (token) => {
+  // Helper: fetch access by token
+  const fetchAccessByToken = async (token) => {
     try {
-      const { data, error } = await supabase.from('Connection').select('*').eq('token', token).limit(1)
+      const { data, error } = await supabase.from('Access').select('*').eq('token', token).limit(1)
       if (error) return { error }
       const row = Array.isArray(data) ? data[0] : data
       return { data: row }
@@ -217,30 +245,34 @@ export default function Home() {
   // Called when user clicks share button in UI
   const handleShareButton = async () => {
     if (connectionToken) {
-      // open modal and start waiting for connection/code
+      // open modal and start waiting for access/code
       setTokenDialogOpen(true)
       setTokenDialogLoading(true)
-      setTokenDialogMessage('Buscando conexión...')
-      setTokenDialogCode('')
+      setTokenDialogMessage('Buscando acceso...')
+      setTokenDialogServerCode('')
+      setTokenDialogInput('')
+      setVerifyLoading(false)
+      setWaitingApproval(false)
 
       // first immediate fetch
-      const res = await fetchConnectionByToken(connectionToken)
+      const res = await fetchAccessByToken(connectionToken)
       if (res.error) {
-        setTokenDialogMessage('Error buscando la conexión')
+        setTokenDialogMessage('Error buscando el acceso')
         setTokenDialogLoading(false)
         return
       }
       const row = res.data
       if (row) setTokenConnection(row)
+
+      // if code already present, show it and start polling for approval
       if (row && row.code) {
-        // Clear any waiting message once a code is available
         setTokenDialogMessage('')
-        setTokenDialogCode(row.code)
+        setTokenDialogServerCode(row.code)
         setTokenDialogLoading(false)
         // start polling for approval status
         if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
         tokenApprovalPollRef.current = setInterval(async () => {
-          const r2 = await fetchConnectionByToken(connectionToken)
+          const r2 = await fetchAccessByToken(connectionToken)
           if (r2.data) setTokenConnection(r2.data)
           if (r2.data && r2.data.is_approved) {
             clearInterval(tokenApprovalPollRef.current)
@@ -250,24 +282,25 @@ export default function Home() {
         return
       }
 
-      // if not found or no code yet, set waiting message and subscribe + poll
-      setTokenDialogMessage('Esperando código de la conexión...')
+      // if not found or no code yet, set waiting message and poll
+      setTokenDialogMessage('Introduce el código que te proporcionó el propietario.')
+      // spinner used only during initial lookup; when waiting for visitor input/polling we hide it
+      setTokenDialogLoading(false)
 
-      // poll as a fallback
-      tokenPollRef.current = setInterval(async () => {
-        const r = await fetchConnectionByToken(connectionToken)
+      // poll as a fallback to detect code filled by remote
+          tokenPollRef.current = setInterval(async () => {
+        const r = await fetchAccessByToken(connectionToken)
         if (r.data) setTokenConnection(r.data)
         if (r.data && r.data.code) {
-          // Clear waiting message and set code when available
           setTokenDialogMessage('')
-          setTokenDialogCode(r.data.code)
+          setTokenDialogServerCode(r.data.code)
           setTokenDialogLoading(false)
           clearInterval(tokenPollRef.current)
           tokenPollRef.current = null
           // start polling for approval status as well
           if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
           tokenApprovalPollRef.current = setInterval(async () => {
-            const r2 = await fetchConnectionByToken(connectionToken)
+            const r2 = await fetchAccessByToken(connectionToken)
             if (r2.data) setTokenConnection(r2.data)
             if (r2.data && r2.data.is_approved) {
               clearInterval(tokenApprovalPollRef.current)
@@ -277,24 +310,24 @@ export default function Home() {
         }
       }, 3000)
 
-      // realtime subscription to updates for this token
+      // realtime subscription to updates for this token (Access table)
       try {
         const chan = supabase
           .channel(`token-wait-${connectionToken}`)
-          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Connection', filter: `token=eq.${connectionToken}` }, (payload) => {
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Access', filter: `token=eq.${connectionToken}` }, (payload) => {
             const newRow = payload?.new
             if (newRow) setTokenConnection(newRow)
             if (newRow && newRow.code) {
               // Clear waiting message when code arrives via realtime
               setTokenDialogMessage('')
-              setTokenDialogCode(newRow.code)
+                setTokenDialogServerCode(newRow.code)
               setTokenDialogLoading(false)
               if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
               // start approval poll if not already
               if (!newRow.is_approved) {
                 if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
                 tokenApprovalPollRef.current = setInterval(async () => {
-                  const r2 = await fetchConnectionByToken(connectionToken)
+                  const r2 = await fetchAccessByToken(connectionToken)
                   if (r2.data) setTokenConnection(r2.data)
                   if (r2.data && r2.data.is_approved) {
                     clearInterval(tokenApprovalPollRef.current)
@@ -303,9 +336,17 @@ export default function Home() {
                 }, 3000)
               }
             }
+            // If authenticated owner marks requested, indicate to the verifier
+            if (newRow && newRow.is_requested) {
+              // verifier waiting state should stop and show waiting approval
+              setVerifyLoading(false)
+              setWaitingApproval(true)
+            }
             if (newRow && newRow.is_approved) {
               // approval received
               setTokenConnection(newRow)
+              setVerifyLoading(false)
+              setWaitingApproval(false)
               if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
             }
           })
@@ -414,143 +455,67 @@ export default function Home() {
           </Paper>
         </Box>
       )}
-      {/* Dialog que muestra progreso cuando hay token en la URL */}
-      <Dialog open={tokenDialogOpen} onClose={() => {
-        setTokenDialogOpen(false)
-        setTokenDialogLoading(false)
-        setTokenDialogMessage('')
-        setTokenDialogCode('')
-        if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
-        try { tokenChannelRef.current?.unsubscribe() } catch (e) {}
-      }} fullWidth maxWidth="xs" PaperProps={{ sx: { m: { xs: 1, sm: 2 }, width: 'auto', maxWidth: 520 } }}>
-        <DialogTitle>{tokenDialogLoading ? 'Generando enlace...' : (tokenDialogCode ? 'Enlace listo' : 'Esperando')}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'grid', gap: 1, width: '100%', p: 1, boxSizing: 'border-box' }}>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              {tokenDialogLoading ? (
-                <Box sx={{ width: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress size={24} /></Box>
-              ) : null}
-              <Box>
-                <Typography variant="body2">{tokenDialogMessage || (tokenDialogCode ? 'Código disponible' : '')}</Typography>
-                {tokenDialogCode ? (
-                  <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
-                        {(() => {
-                          const raw = (tokenDialogCode || tokenConnection?.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
-                          const chars = raw.split('')
-                          const elems = []
-                          for (let i = 0; i < chars.length; i++) {
-                            if (i === 4) elems.push(<Box key={`dash-${i}`} sx={{ px: 0.5, fontSize: { xs: 12, sm: 14 } }}>-</Box>)
-                            elems.push(
-                              <Box key={i} sx={{ minWidth: { xs: 20, sm: 36 }, height: { xs: 24, sm: 36 }, border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 700, bgcolor: 'background.paper', px: 0.5, fontSize: { xs: 12, sm: 16 } }}>
-                                {chars[i]}
-                              </Box>
-                            )
-                          }
-                          return (
-                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center', overflowX: 'auto', px: 1 }}>{elems}</Box>
-                          )
-                        })()}
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                      <Button size="small" variant="contained" startIcon={<ContentCopyIcon />} onClick={() => {
-                        const raw = (tokenDialogCode || tokenConnection?.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
-                        const formatted = raw.slice(0,4) + (raw.length>4? '-' + raw.slice(4): '')
-                        try { navigator.clipboard.writeText(formatted); setSnack({ open: true, message: 'Código copiado al portapapeles' }) } catch(e){ setSnack({ open: true, message: 'No se pudo copiar' }) }
-                      }} sx={{ textTransform: 'none' }}>
-                        Copiar al portapapeles
-                      </Button>
-                    </Box>
-                  </Box>
-                ) : null}
-              </Box>
-            </Box>
-
-            {/* Instructions and waiting for approval */}
-            {tokenDialogCode ? (
-              <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
-                {/* Lista de instrucciones en puntos */}
-                {(() => {
-                  const instructions = [
-                    'Copia el código mostrado arriba.',
-                    'Abre la notificación de WhatsApp y pega el código.',
-                    'Alternativamente, abre WhatsApp y presiona "Dispositos Vinculados" en el menu de puntos.',
-                    'Pega el pega el código.'
-                  ]
-                  return (
-                    <List dense sx={{ p: 0, mt: 0 }}>
-                      {instructions.map((it, i) => (
-                        <ListItem key={i} sx={{ py: 0.5 }}>
-                          <ListItemIcon sx={{ minWidth: 28 }}>
-                            <FiberManualRecordIcon sx={{ fontSize: 12 }} />
-                          </ListItemIcon>
-                          <ListItemText primary={it} primaryTypographyProps={{ variant: 'body2' }} />
-                        </ListItem>
-                      ))}
-                    </List>
-                  )
-                })()}
-                {/* show waiting/loading while is_approved is not true */}
-                {!(tokenConnection?.is_approved) ? (
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}>
-                    <Box sx={{ width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress size={20} /></Box>
-                    <Typography variant="body2" sx={{ fontSize: { xs: 12, sm: 14 } }}>Esperando por la vinculacion...</Typography>
-                  </Box>
-                ) : (
-                  <Alert severity="success" sx={{ mt: 1 }}>Vinculacion realizada existosamente</Alert>
-                )}
-              </Box>
-            ) : null}
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ flexDirection: isNarrow ? 'column' : 'row', gap: 1 }}>
-          <Button onClick={() => {
-            // close dialog and cleanup
+      {/* Access token dialog moved to component */}
+      <AccessTokenDialog
+        open={tokenDialogOpen}
+        onClose={() => {
+          setTokenDialogOpen(false)
+          setTokenDialogLoading(false)
+          setTokenDialogServerCode('')
+          setTokenDialogInput('')
+          setVerifyLoading(false)
+          setWaitingApproval(false)
+          if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
+          try { tokenChannelRef.current?.unsubscribe() } catch (e) {}
+        }}
+        loading={tokenDialogLoading}
+        message={tokenDialogMessage}
+        serverCode={tokenDialogServerCode}
+        input={tokenDialogInput}
+        setInput={setTokenDialogInput}
+        onVerify={async () => {
+          const code = (tokenDialogInput || '').replace(/\D/g, '').slice(0,6)
+          if (!code) return setSnack({ open: true, message: 'Introduce un código válido' })
+          try {
+            setVerifyLoading(true)
+            const { data, error } = await supabase.from('Access').update({ code }).eq('token', connectionToken).select()
+            if (error) throw error
+            const updated = Array.isArray(data) ? data[0] : data
+            setTokenConnection(updated)
+            setTokenDialogMessage('Código enviado. Esperando confirmación del propietario...')
+            setTokenDialogServerCode(code)
+          } catch (err) {
+            setVerifyLoading(false)
+            setSnack({ open: true, message: `Error enviando código: ${err.message}` })
+          }
+        }}
+        verifyLoading={verifyLoading}
+        waitingApproval={waitingApproval}
+        tokenConnection={tokenConnection}
+        onShare={() => {
+          const connPhoneRaw = tokenConnection?.user_linked ?? ''
+          const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
+          const token = tokenConnection?.token ?? ''
+          const sendWithCoords = (lat, lng) => {
+            const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+            const waUrl = `https://wa.me/${connDigits}?text=${encodeURIComponent(maps)}`
+            window.open(waUrl, '_blank')
             setTokenDialogOpen(false)
-            setTokenDialogLoading(false)
-            if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
-            try { tokenChannelRef.current?.unsubscribe() } catch (e) {}
-          }} sx={{ width: fullScreen ? '100%' : 'auto' }}>Cerrar</Button>
-          {tokenDialogCode && tokenConnection?.is_approved ? (
-            <Button variant="contained" onClick={() => {
-              // send WhatsApp with current location to connection phone
-              const connPhoneRaw = tokenConnection?.user_linked ?? ''
-              const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
-              const token = tokenConnection?.token ?? ''
-              const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
-              const link = `${base}/?t=${encodeURIComponent(token)}`
-
-              const sendWithCoords = (lat, lng) => {
-                // Send only the Google Maps link (so the recipient can open the location directly)
-                const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
-                const text = maps
-                const waUrl = `https://wa.me/${connDigits}?text=${encodeURIComponent(text)}`
-                window.open(waUrl, '_blank')
-              }
-
-              if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                  (pos) => {
-                    sendWithCoords(pos.coords.latitude, pos.coords.longitude)
-                    setTokenDialogOpen(false)
-                  },
-                  () => {
-                    // fallback to last known position variable `position` if available
-                    try {
-                      const last = position
-                      if (last) sendWithCoords(last[0], last[1])
-                    } catch (e) {}
-                    setTokenDialogOpen(false)
-                  },
-                  { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-                )
-              } else {
-                setSnack({ open: true, message: 'Geolocalización no disponible' })
-              }
-            }} sx={{ width: isNarrow ? '100%' : 'auto' }}>Compartir</Button>
-          ) : null}
-        </DialogActions>
-      </Dialog>
+          }
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => sendWithCoords(pos.coords.latitude, pos.coords.longitude),
+              () => {
+                try { const last = position; if (last) sendWithCoords(last[0], last[1]) } catch (e) {}
+                setTokenDialogOpen(false)
+              },
+              { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            )
+          } else setSnack({ open: true, message: 'Geolocalización no disponible' })
+        }}
+        position={position}
+        isNarrow={isNarrow}
+      />
     </Box>
   )
 }

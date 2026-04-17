@@ -1,71 +1,38 @@
 import React from 'react'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
+import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
-import List from '@mui/material/List'
-import ListItem from '@mui/material/ListItem'
-import ListItemText from '@mui/material/ListItemText'
-import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
-import Divider from '@mui/material/Divider'
+import Typography from '@mui/material/Typography'
+import Grid from '@mui/material/Grid'
 import IconButton from '@mui/material/IconButton'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
 
-export default function ConnectionList({ connections, isSm, onEdit, onDelete }) {
-  if (isSm) {
-    return (
-      <List>
-        {connections.map((row, idx) => (
-          <React.Fragment key={row.id}>
-            <ListItem sx={{ py: 1, px: 0 }}>
-              <ListItemText
-                primary={<span style={{ fontWeight: 700 }}>{row.user_linked || '—'}</span>}
-                secondary={<span style={{ fontSize: 12 }}>{`Código: ${row.code || '—'} • Creado: ${new Date(row.created_at).toLocaleString()}`}</span>}
-              />
-              <ListItemSecondaryAction>
-                <IconButton edge="end" size="small" onClick={() => onEdit(row)} aria-label="editar"><EditIcon /></IconButton>
-                <IconButton edge="end" size="small" onClick={() => onDelete(row)} aria-label="eliminar"><DeleteIcon /></IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-            {idx < connections.length - 1 ? <Divider component="li" /> : null}
-          </React.Fragment>
-        ))}
-      </List>
-    )
-  }
-
+export default function ConnectionList({ connections = [], onEdit, onDelete }) {
+  // Responsive grid: xs=12 (1 per row on extra small), sm=6 (2 per row), md=3 (4 per row)
   return (
-    <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
-      <Table sx={{ minWidth: 650 }}>
-        <TableHead>
-          <TableRow>
-            <TableCell>ID</TableCell>
-            <TableCell>Code</TableCell>
-            <TableCell>User Linked</TableCell>
-            <TableCell>Creado</TableCell>
-            <TableCell align="right">Acciones</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {connections.map((row) => (
-            <TableRow key={row.id}>
-              <TableCell>{row.id}</TableCell>
-              <TableCell>{row.code}</TableCell>
-              <TableCell>{row.user_linked}</TableCell>
-              <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
-              <TableCell align="right">
+    <Grid container spacing={2}>
+      {connections.map((row) => (
+        <Grid key={row.id} item xs={12} sm={6} md={3}>
+          <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, wordBreak: 'break-word' }}>{row.user_linked || '—'}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{row.code ? `Código: ${String(row.code).replace(/\D/g,'').slice(0,6)}` : 'Sin código'}</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <AccessTimeIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                <Typography variant="caption" color="text.secondary">{row.created_at ? new Date(row.created_at).toLocaleString() : ''}</Typography>
+              </Box>
+              <Box>
                 <IconButton size="small" onClick={() => onEdit(row)} aria-label="editar"><EditIcon /></IconButton>
                 <IconButton size="small" onClick={() => onDelete(row)} aria-label="eliminar"><DeleteIcon /></IconButton>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+      ))}
+    </Grid>
   )
 }
 

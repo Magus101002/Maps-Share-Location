@@ -44,16 +44,25 @@ export default function Dashboard() {
   const isSm = useMediaQuery(theme.breakpoints.down('sm'))
   const { user, logout } = useAuth()
   const [connections, setConnections] = useState([])
+  const [accesses, setAccesses] = useState([])
+  const accessRowChannelRef = React.useRef(null)
   const [loading, setLoading] = useState(false)
+  const [accessLoading, setAccessLoading] = useState(false)
   const [open, setOpen] = useState(false) // dialog open (create/edit)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ code: '', user_country: '+53', user_phone: '' })
   const [createdConnection, setCreatedConnection] = useState(null)
+  const [createdAccess, setCreatedAccess] = useState(null)
+  const [accessOpen, setAccessOpen] = useState(false)
+  const [accessEditing, setAccessEditing] = useState(null)
+  const [accessForm, setAccessForm] = useState({ code: '', user_country: '+53', user_phone: '' })
   const [userPhoneLocal, setUserPhoneLocal] = useState(null)
   const [phoneDialogOpen, setPhoneDialogOpen] = useState(false)
   const [phoneForm, setPhoneForm] = useState({ country: '+53', number: '' })
   const [snack, setSnack] = useState({ open: false, message: '' })
   const [profileAnchor, setProfileAnchor] = useState(null)
+  const [activeTab, setActiveTab] = useState('connections')
+  const headerDescription = activeTab === 'connections' ? 'Gestiona tus conexiones' : 'Gestiona tus accesos'
 
   const fetchConnections = useCallback(async () => {
     if (!user) return
@@ -72,8 +81,26 @@ export default function Dashboard() {
     }
   }, [user])
 
+  const fetchAccesses = useCallback(async () => {
+    if (!user) return
+    setAccessLoading(true)
+    const { data, error } = await supabase
+      .from('Access')
+      .select('*')
+      .eq('user', user.id)
+      .order('created_at', { ascending: false })
+
+    setAccessLoading(false)
+    if (error) {
+      setSnack({ open: true, message: `Error al leer accesos: ${error.message}` })
+    } else {
+      setAccesses(data || [])
+    }
+  }, [user])
+
   useEffect(() => {
     fetchConnections()
+    fetchAccesses()
   }, [fetchConnections])
 
   // Profile menu handlers
@@ -95,14 +122,64 @@ export default function Dashboard() {
       )
       .subscribe()
 
+    // subscribe to Access changes as well
+    const channel2 = supabase
+      .channel('public-access')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'Access', filter: `user=eq.${user.id}` },
+        (payload) => {
+          try {
+            const newRow = payload?.new
+            const oldRow = payload?.old
+            // If we have a new row payload, update local list and any open dialog states
+            if (newRow) {
+              setAccesses((prev) => {
+                const exists = prev.some((r) => r.id === newRow.id)
+                if (exists) return prev.map((r) => (r.id === newRow.id ? newRow : r))
+                return [newRow, ...prev]
+              })
+              if (accessEditing && accessEditing.id === newRow.id) setAccessEditing(newRow)
+              if (createdAccess && createdAccess.id === newRow.id) setCreatedAccess(newRow)
+            } else if (oldRow && payload.eventType === 'DELETE') {
+              // remove deleted row
+              setAccesses((prev) => prev.filter((r) => r.id !== oldRow.id))
+              if (accessEditing && accessEditing.id === oldRow.id) setAccessEditing(null)
+              if (createdAccess && createdAccess.id === oldRow.id) setCreatedAccess(null)
+            } else {
+              // fallback: refetch full list
+              fetchAccesses()
+            }
+          } catch (e) {
+            // on any error, fallback to refetch
+            fetchAccesses()
+          }
+        }
+      )
+      .subscribe()
+
     return () => {
       try {
         channel.unsubscribe()
+        channel2.unsubscribe()
       } catch (e) {
         // ignore
       }
     }
   }, [user, fetchConnections])
+
+  // Keep accessEditing/createdAccess in sync if the accesses array changes
+  useEffect(() => {
+    if (!accesses || accesses.length === 0) return
+    if (accessEditing) {
+      const found = accesses.find((r) => r.id === accessEditing.id)
+      if (found) setAccessEditing(found)
+    }
+    if (createdAccess) {
+      const found = accesses.find((r) => r.id === createdAccess.id)
+      if (found) setCreatedAccess(found)
+    }
+  }, [accesses])
 
   const handleLogout = async () => {
     await logout()
@@ -113,6 +190,26 @@ export default function Dashboard() {
     setForm({ code: '', user_country: '+53', user_phone: '' })
     setCreatedConnection(null)
     setOpen(true)
+  }
+
+  const handleDeleteAccess = async (row) => {
+    if (!confirm('¿Eliminar este acceso?')) return
+    const { error } = await supabase.from('Access').delete().eq('id', row.id)
+    if (error) setSnack({ open: true, message: `Error al eliminar: ${error.message}` })
+    else setSnack({ open: true, message: 'Acceso eliminado' })
+    fetchAccesses()
+  }
+
+  const handleRequestAccess = async () => {
+    // Removed: marking as requested is no longer required in the dashboard
+    return
+  }
+
+  const handleOpenCreateAccess = () => {
+    setAccessEditing(null)
+    setAccessForm({ code: '', user_country: '+53', user_phone: '' })
+    setCreatedAccess(null)
+    setAccessOpen(true)
   }
 
   const openPhoneDialog = () => {
@@ -159,6 +256,48 @@ export default function Dashboard() {
     setOpen(true)
   }
 
+  const handleOpenEditAccess = (row) => {
+    setAccessEditing(row)
+    const raw = row.user_linked || ''
+    const m = raw.match(/^(\+\d{1,3})(\d{8})$/)
+    if (m) {
+      setAccessForm({ code: row.code || '', user_country: m[1], user_phone: m[2] })
+    } else {
+      const digits = (raw || '').replace(/\D/g, '')
+      const phone = digits.slice(-8)
+      setAccessForm({ code: row.code || '', user_country: '+53', user_phone: phone })
+    }
+    setAccessOpen(true)
+  }
+
+  // When an access row is opened for editing/viewing, subscribe specifically to that row
+  useEffect(() => {
+    if (!accessEditing) return
+    // cleanup previous
+    try { accessRowChannelRef.current?.unsubscribe() } catch (e) {}
+    try {
+      const chan = supabase
+        .channel(`access-row-${accessEditing.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Access', filter: `id=eq.${accessEditing.id}` }, (payload) => {
+          const newRow = payload?.new
+          if (newRow) {
+            setAccessEditing(newRow)
+            setCreatedAccess((c) => (c && c.id === newRow.id ? newRow : c))
+            setAccesses((prev) => prev.map((r) => (r.id === newRow.id ? newRow : r)))
+          }
+        })
+        .subscribe()
+      accessRowChannelRef.current = chan
+    } catch (e) {
+      // ignore
+    }
+
+    return () => {
+      try { accessRowChannelRef.current?.unsubscribe() } catch (e) {}
+      accessRowChannelRef.current = null
+    }
+  }, [accessEditing])
+
   const handleClose = () => setOpen(false)
 
   const handleSubmit = async (e) => {
@@ -188,6 +327,38 @@ export default function Dashboard() {
       }
       handleClose()
       fetchConnections()
+      fetchAccesses()
+    } catch (err) {
+      setSnack({ open: true, message: `Error: ${err.message}` })
+    }
+  }
+
+  const handleSubmitAccess = async (e) => {
+    e?.preventDefault()
+    if (!user) return setSnack({ open: true, message: 'Usuario no autenticado' })
+
+    try {
+      const finalUserLinked = `${accessForm.user_country || '+53'}${accessForm.user_phone || ''}`
+      if (accessEditing) {
+        const { data, error } = await supabase
+          .from('Access')
+          .update({ user_linked: finalUserLinked })
+          .eq('id', accessEditing.id)
+          .select()
+
+        if (error) throw error
+        setSnack({ open: true, message: 'Acceso actualizado' })
+      } else {
+        const { data, error } = await supabase
+          .from('Access')
+          .insert([{ user: user.id, user_linked: finalUserLinked }])
+          .select()
+
+        if (error) throw error
+        setSnack({ open: true, message: 'Acceso creado' })
+      }
+      setAccessOpen(false)
+      fetchAccesses()
     } catch (err) {
       setSnack({ open: true, message: `Error: ${err.message}` })
     }
@@ -228,6 +399,78 @@ export default function Dashboard() {
       // leave dialog open so user can edit details
     } catch (err) {
       setSnack({ open: true, message: `Error creando conexión: ${err.message}` })
+    }
+  }
+
+  // Access analogs: quick create, save code, mark approve
+  const handleCreateFromPhoneAccess = async () => {
+    if (!user) return setSnack({ open: true, message: 'Usuario no autenticado' })
+    if (!(/^[+]\d{1,3}$/.test(accessForm.user_country) && /^\d{8}$/.test(accessForm.user_phone))) return
+
+    const finalUserLinked = `${accessForm.user_country}${accessForm.user_phone}`
+    try {
+      const { data, error } = await supabase
+        .from('Access')
+        .insert([{ user: user.id, user_linked: finalUserLinked }])
+        .select()
+
+      if (error) throw error
+      const created = Array.isArray(data) ? data[0] : data
+      setSnack({ open: true, message: 'Acceso creado exitosamente' })
+      setCreatedAccess(created)
+      fetchAccesses()
+      setAccessEditing(created)
+      const raw = created.user_linked || ''
+      const m = raw.match(/^(\+\d{1,3})(\d{8})$/)
+      if (m) {
+        setAccessForm({ code: created.code || '', user_country: m[1], user_phone: m[2] })
+      } else {
+        const digits = (raw || '').replace(/\D/g, '')
+        const phone = digits.slice(-8)
+        setAccessForm({ code: created.code || '', user_country: '+53', user_phone: phone })
+      }
+    } catch (err) {
+      setSnack({ open: true, message: `Error creando acceso: ${err.message}` })
+    }
+  }
+
+  const handleSaveCodeAccess = async () => {
+    const acc = createdAccess ?? accessEditing
+    if (!acc || !acc.id) return setSnack({ open: true, message: 'No existe el acceso para guardar el código' })
+    const linked = acc.user_linked || ''
+    if (!linked) return setSnack({ open: true, message: 'No hay número vinculado en el acceso' })
+    try {
+      const { data, error } = await supabase
+        .from('Access')
+        .update({ code: accessForm.code })
+        .eq('id', acc.id)
+        .select()
+      if (error) throw error
+      const updated = Array.isArray(data) ? data[0] : data
+      setSnack({ open: true, message: 'Código guardado' })
+      setCreatedAccess((c) => (c && c.id === updated.id ? updated : c))
+      if (accessEditing && accessEditing.id === updated.id) setAccessEditing(updated)
+    } catch (err) {
+      setSnack({ open: true, message: `Error guardando código: ${err.message}` })
+    }
+  }
+
+  const handleApproveAccess = async () => {
+    const acc = createdAccess ?? accessEditing
+    if (!acc || !acc.id) return setSnack({ open: true, message: 'No existe el acceso' })
+    try {
+      const { data, error } = await supabase
+        .from('Access')
+        .update({ is_approved: true })
+        .eq('id', acc.id)
+        .select()
+      if (error) throw error
+      const updated = Array.isArray(data) ? data[0] : data
+      setSnack({ open: true, message: 'Vinculación marcada como realizada' })
+      setCreatedAccess((c) => (c && c.id === updated.id ? updated : c))
+      if (accessEditing && accessEditing.id === updated.id) setAccessEditing(updated)
+    } catch (err) {
+      setSnack({ open: true, message: `Error marcando vinculación: ${err.message}` })
     }
   }
 
@@ -293,13 +536,17 @@ export default function Dashboard() {
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', p: { xs: 1, sm: 2 }, display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* Top bar */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
         <Box>
           <Typography variant="h4">Dashboard</Typography>
-          <Typography variant="body2" color="text.secondary">Gestiona tus conexiones</Typography>
+          <Typography variant="body2" color="text.secondary">{headerDescription}</Typography>
+          <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+            <Button variant={activeTab === 'connections' ? 'contained' : 'outlined'} size="small" onClick={() => setActiveTab('connections')}>Conexiones</Button>
+            <Button variant={activeTab === 'access' ? 'contained' : 'outlined'} size="small" onClick={() => setActiveTab('access')}>Access</Button>
+          </Box>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Button startIcon={<AddIcon />} variant="contained" onClick={handleOpenCreate}>Nueva</Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={() => { if (activeTab === 'connections') handleOpenCreate(); else handleOpenCreateAccess(); }}>Nueva</Button>
           <IconButton onClick={openProfileMenu} size="small" sx={{ ml: 1 }} aria-label="perfil">
             <Avatar sx={{ width: 36, height: 36 }}>{(user?.email || '?').charAt(0).toUpperCase()}</Avatar>
           </IconButton>
@@ -328,13 +575,23 @@ export default function Dashboard() {
           </Alert>
         )}
 
-        {/* Connections list / table */}
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+        {/* Dynamic: show Connections or Access depending on activeTab */}
+        {activeTab === 'connections' ? (
+          (loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : (
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              <ConnectionList connections={connections} isSm={isSm} onEdit={handleOpenEdit} onDelete={handleDelete} />
+            </Box>
+          ))
         ) : (
-          <Box sx={{ flex: 1, overflow: 'auto' }}>
-            <ConnectionList connections={connections} isSm={isSm} onEdit={handleOpenEdit} onDelete={handleDelete} />
-          </Box>
+          (accessLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : (
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              <ConnectionList connections={accesses} isSm={isSm} onEdit={handleOpenEditAccess} onDelete={handleDeleteAccess} />
+            </Box>
+          ))
         )}
       </Box>
 
@@ -438,13 +695,32 @@ export default function Dashboard() {
                       onClick={() => {
                         const connPhoneRaw = createdConnection?.user_linked ?? editing?.user_linked ?? finalUserLinked
                         const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
-                        const token = createdConnection?.token ?? editing?.token ?? ''
-                        const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
-                        const link = `${base}/?t=${encodeURIComponent(token)}`
-                        // wa.me requires digits only (no +). Use encoded text param
                         const waNumber = connDigits
-                        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                        window.open(waUrl, '_blank')
+                        const sendWithCoords = (lat, lng) => {
+                          const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+                          const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(maps)}`
+                          window.open(waUrl, '_blank')
+                        }
+                        if (navigator.geolocation) {
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => { sendWithCoords(pos.coords.latitude, pos.coords.longitude) },
+                            () => {
+                              // fallback: open wa with app link if geolocation not available
+                              const token = createdConnection?.token ?? editing?.token ?? ''
+                              const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
+                              const link = `${base}/?t=${encodeURIComponent(token)}`
+                              const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
+                              window.open(waUrl, '_blank')
+                            },
+                            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+                          )
+                        } else {
+                          const token = createdConnection?.token ?? editing?.token ?? ''
+                          const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
+                          const link = `${base}/?t=${encodeURIComponent(token)}`
+                          const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
+                          window.open(waUrl, '_blank')
+                        }
                       }}
                       sx={{ textTransform: 'none' }}
                     >
@@ -502,6 +778,149 @@ export default function Dashboard() {
         <DialogActions>
           <Button onClick={handleClose}>Cancelar</Button>
           <Button variant="contained" onClick={handleSubmit} disabled={!userHasPhone && !editing}>{editing ? 'Guardar' : 'Crear'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Access dialog (similar to Connection dialog) */}
+      <Dialog open={accessOpen} onClose={() => { setAccessOpen(false); setAccessEditing(null); setAccessForm({ code: '', user_country: '+53', user_phone: '' }); setCreatedAccess(null); }} fullWidth>
+        <DialogTitle>{accessEditing ? 'Editar acceso' : 'Nuevo acceso'}</DialogTitle>
+        <DialogContent>
+          <Box component="form" sx={{ display: 'grid', gap: 2, mt: 1 }}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>No de telefono a vincular</Typography>
+              <Typography variant="body2" sx={{ mb: 1, color: 'text.secondary' }}>Introduce el código de país y el número de 8 dígitos, luego pulsa el botón "Crear".</Typography>
+              <Grid container spacing={1} alignItems="center">
+                <Grid item xs={4} sm={3}>
+                  <TextField
+                    label="Código país"
+                    value={accessForm.user_country}
+                    onChange={(e) => {
+                      let v = e.target.value || ''
+                      v = v.replace(/[^+\d]/g, '')
+                      if (!v.startsWith('+')) v = '+' + v.replace(/\+/g, '')
+                      v = v.slice(0, 4)
+                      setAccessForm((s) => ({ ...s, user_country: v }))
+                      setCreatedAccess(null)
+                    }}
+                    fullWidth
+                    inputProps={{ maxLength: 4 }}
+                  />
+                </Grid>
+                <Grid item xs={6} sm={7}>
+                  <TextField
+                    label="Número"
+                    value={accessForm.user_phone}
+                    onChange={(e) => { setAccessForm((s) => ({ ...s, user_phone: e.target.value.replace(/\D/g, '').slice(0,8) })); setCreatedAccess(null) }}
+                    fullWidth
+                    inputProps={{ inputMode: 'numeric', pattern: '\\d*', maxLength: 8 }}
+                  />
+                </Grid>
+                <Grid item xs={isSm ? 12 : 2} sm={2}>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="success"
+                    onClick={accessEditing ? () => handleSubmitAccess() : handleCreateFromPhoneAccess}
+                    disabled={!(/^[+]\d{1,3}$/.test(accessForm.user_country) && /^\d{8}$/.test(accessForm.user_phone)) || !userHasPhone}
+                    aria-label="Crear acceso"
+                  >
+                    {accessEditing ? 'Modificar' : 'Crear'}
+                  </Button>
+                </Grid>
+              </Grid>
+            </Box>
+
+            {/* If created or editing show actions */}
+            {(createdAccess || accessEditing) ? (
+              <Box sx={{ display: 'grid', gap: 1 }}>
+                <Typography variant="body2">Puedes copiar el enlace o enviar la ubicación por WhatsApp al usuario vinculado.</Typography>
+                <Box sx={{ mt: 0.5 }}>
+                  <Paper variant="outlined" sx={{ p: 1, fontFamily: 'monospace', wordBreak: 'break-all', bgcolor: '#f5f5f5' }}>
+                    {(() => {
+                      const token = createdAccess?.token ?? accessEditing?.token ?? ''
+                      const base = typeof window !== 'undefined' ? window.location.origin + '/' : 'https://mi.dominio/'
+                      const params = `?t=${encodeURIComponent(token)}`
+                      return `${base}${params}`
+                    })()}
+                  </Paper>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                    <Button size="small" variant="contained" startIcon={<ContentCopyIcon />} onClick={() => {
+                      const token = createdAccess?.token ?? accessEditing?.token ?? ''
+                      const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
+                      const link = `${base}/?t=${encodeURIComponent(token)}`
+                      try { navigator.clipboard.writeText(link); setSnack({ open: true, message: 'Enlace copiado al portapapeles' }) } catch(e){ setSnack({ open: true, message: 'No se pudo copiar el enlace' }) }
+                    }} sx={{ textTransform: 'none' }}>Copiar enlace</Button>
+
+                    <Button size="small" variant="contained" color="success" startIcon={<WhatsAppIcon />} onClick={() => {
+                      const connPhoneRaw = createdAccess?.user_linked ?? accessEditing?.user_linked ?? `${accessForm.user_country}${accessForm.user_phone}`
+                      const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
+                      const waNumber = connDigits
+                      const sendWithCoords = (lat, lng) => {
+                        const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+                        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(maps)}`
+                        window.open(waUrl, '_blank')
+                      }
+                      if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => { sendWithCoords(pos.coords.latitude, pos.coords.longitude) },
+                          () => {
+                            const token = createdAccess?.token ?? accessEditing?.token ?? ''
+                            const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
+                            const link = `${base}/?t=${encodeURIComponent(token)}`
+                            const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
+                            window.open(waUrl, '_blank')
+                          },
+                          { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+                        )
+                      } else {
+                        const token = createdAccess?.token ?? accessEditing?.token ?? ''
+                        const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
+                        const link = `${base}/?t=${encodeURIComponent(token)}`
+                        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
+                        window.open(waUrl, '_blank')
+                      }
+                    }} sx={{ textTransform: 'none' }}>Enviar por WhatsApp</Button>
+                  </Box>
+
+                  <FormHelperText>Cuando el usuario no autenticado pegue el código desde el enlace, se mostrará aquí (no editable).</FormHelperText>
+
+                  {/* Display the code read-only if present, otherwise show waiting message */}
+                  {(createdAccess?.code) || (accessEditing?.code) ? (
+                    <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
+                      {(() => {
+                        const raw = (createdAccess?.code ?? accessEditing?.code ?? '').toString().replace(/\D/g, '').slice(0, 6)
+                        const chars = raw.split('')
+                        const boxes = []
+                        for (let i = 0; i < 6; i++) boxes.push(chars[i] || '')
+                        return (
+                          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center', px: 1 }}>
+                            {boxes.map((c, i) => (
+                              <Box key={i} sx={{ minWidth: { xs: 20, sm: 36 }, height: { xs: 28, sm: 40 }, border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 700, bgcolor: 'background.paper', px: 0.5, fontSize: { xs: 14, sm: 18 } }}>{c}</Box>
+                            ))}
+                          </Box>
+                        )
+                      })()}
+
+                      {/* If approved show green label, otherwise show approve button */}
+                      {((createdAccess?.is_approved) || (accessEditing?.is_approved)) ? (
+                        <Alert severity="success" sx={{ mt: 1 }}>Vinculado</Alert>
+                      ) : (
+                        <Button variant="contained" color="success" onClick={handleApproveAccess}>Marcar como accesso aprobado</Button>
+                      )}
+                    </Box>
+                  ) : (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="body2">Esperando a que el usuario introduzca el código desde el enlace público.</Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            ) : null}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAccessOpen(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={handleSubmitAccess}>{accessEditing ? 'Guardar' : 'Crear'}</Button>
         </DialogActions>
       </Dialog>
 
