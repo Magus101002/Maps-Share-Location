@@ -77,7 +77,6 @@ export default function AccessTokenDialog({
               <Box sx={{ width: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress size={24} /></Box>
             ) : null}
             <Box>
-              <Typography variant="body2">{message || (serverCode ? 'Código disponible' : '')}</Typography>
               {serverCode ? (
                 <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',gap: 1 }}>
                   {renderCodeBoxes(serverCode)}

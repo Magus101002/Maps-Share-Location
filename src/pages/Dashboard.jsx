@@ -46,6 +46,7 @@ export default function Dashboard() {
   const [connections, setConnections] = useState([])
   const [accesses, setAccesses] = useState([])
   const accessRowChannelRef = React.useRef(null)
+  const createdAccessChannelRef = React.useRef(null)
   const [loading, setLoading] = useState(false)
   const [accessLoading, setAccessLoading] = useState(false)
   const [open, setOpen] = useState(false) // dialog open (create/edit)
@@ -278,6 +279,34 @@ export default function Dashboard() {
       accessRowChannelRef.current = null
     }
   }, [accessEditing])
+
+  // Subscribe to realtime updates for a newly created access (so dialogs showing createdAccess update)
+  useEffect(() => {
+    if (!createdAccess) return
+    try { createdAccessChannelRef.current?.unsubscribe() } catch (e) {}
+    try {
+      const chan = supabase
+        .channel(`access-created-${createdAccess.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Access', filter: `id=eq.${createdAccess.id}` }, (payload) => {
+          const newRow = payload?.new
+          if (newRow) {
+            setCreatedAccess(newRow)
+            setAccesses((prev) => prev.map((r) => (r.id === newRow.id ? newRow : r)))
+            // if this row is also currently being edited, keep that in sync
+            if (accessEditing && accessEditing.id === newRow.id) setAccessEditing(newRow)
+          }
+        })
+        .subscribe()
+      createdAccessChannelRef.current = chan
+    } catch (e) {
+      // ignore
+    }
+
+    return () => {
+      try { createdAccessChannelRef.current?.unsubscribe() } catch (e) {}
+      createdAccessChannelRef.current = null
+    }
+  }, [createdAccess, accessEditing])
 
   // Keep dialog-local access objects in sync when the accesses list changes
   useEffect(() => {
@@ -886,7 +915,8 @@ export default function Dashboard() {
                   {(createdAccess?.code) || (accessEditing?.code) ? (
                     <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
                       {(() => {
-                        const raw = (createdAccess?.code ?? accessEditing?.code ?? '').toString().replace(/\D/g, '').slice(0, 6)
+                        // allow alphanumeric codes and show up to 6 uppercase chars
+                        const raw = (createdAccess?.code ?? accessEditing?.code ?? '').toString().replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase()
                         const chars = raw.split('')
                         const boxes = []
                         for (let i = 0; i < 6; i++) boxes.push(chars[i] || '')
