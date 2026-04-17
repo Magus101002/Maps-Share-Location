@@ -877,35 +877,17 @@ export default function Dashboard() {
                     }} sx={{ textTransform: 'none' }}>Copiar enlace</Button>
 
                     <Button size="small" variant="contained" color="success" startIcon={<WhatsAppIcon />} onClick={() => {
+                      // For Access dialog: always send the generated public link (token) via WhatsApp
                       const connPhoneRaw = createdAccess?.user_linked ?? accessEditing?.user_linked ?? `${accessForm.user_country}${accessForm.user_phone}`
                       const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
                       const waNumber = connDigits
                       const id = `wa-access-${createdAccess?.id ?? accessEditing?.id ?? 'new'}`
-                      const sendWithCoords = (lat, lng) => {
-                        const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
-                        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(maps)}`
-                        openWaUrlWithCooldown(id, waUrl)
-                      }
                       if (isWaDisabled(id)) return
-                      if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                          (pos) => { sendWithCoords(pos.coords.latitude, pos.coords.longitude) },
-                          () => {
-                            const token = createdAccess?.token ?? accessEditing?.token ?? ''
-                            const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
-                            const link = `${base}/?t=${encodeURIComponent(token)}`
-                            const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                            openWaUrlWithCooldown(id, waUrl)
-                          },
-                          { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-                        )
-                      } else {
-                        const token = createdAccess?.token ?? accessEditing?.token ?? ''
-                        const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
-                        const link = `${base}/?t=${encodeURIComponent(token)}`
-                        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
-                        openWaUrlWithCooldown(id, waUrl)
-                      }
+                      const token = createdAccess?.token ?? accessEditing?.token ?? ''
+                      const base = typeof window !== 'undefined' ? window.location.origin : 'https://mi.dominio'
+                      const link = `${base}/?t=${encodeURIComponent(token)}`
+                      const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(link)}`
+                      openWaUrlWithCooldown(id, waUrl)
                     }} sx={{ textTransform: 'none' }}>Enviar por WhatsApp</Button>
                   </Box>
 
