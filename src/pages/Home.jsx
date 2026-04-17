@@ -40,12 +40,16 @@ function Recenter({ position }) {
   const map = useMap()
   useEffect(() => {
     if (!position) return
-    // try setView for smooth centering; fallback to panTo
+    // Auto-zoom to level 15 when location is found. Use setView to center+zoom;
+    // fallback to panTo if setView is not available.
     try {
-      if (typeof map.setView === 'function') map.setView(position, map.getZoom ? map.getZoom() : 15, { animate: true })
-      else if (typeof map.panTo === 'function') map.panTo(position)
+      if (typeof map.setView === 'function') {
+        map.setView(position, 15, { animate: true })
+      } else if (typeof map.panTo === 'function') {
+        map.panTo(position)
+      }
     } catch (e) {
-      try { map.panTo(position) } catch (err) { /* ignore */ }
+      try { if (typeof map.panTo === 'function') map.panTo(position) } catch (err) { /* ignore */ }
     }
   }, [position, map])
 
@@ -54,6 +58,13 @@ function Recenter({ position }) {
 
 export default function Home() {
   const [snack, setSnack] = useState({ open: false, message: '' })
+  const { user } = useAuth()
+  const theme = useTheme()
+  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'))
+  const [position, setPosition] = useState(null)
+  const [sharing, setSharing] = useState(false)
+  const watchRef = useRef(null)
+  const markerRef = useRef(null)
   const [locating, setLocating] = useState(true)
   const [permissionState, setPermissionState] = useState(null) // 'granted' | 'prompt' | 'denied' | null
   const [showPermissionHelp, setShowPermissionHelp] = useState(false)
@@ -371,6 +382,20 @@ export default function Home() {
     iconSize: [40, 56],
     iconAnchor: [20, 56]
   })
+
+  // Auto-open the marker popup when position changes
+  function AutoOpenPopup({ position, markerRef }) {
+    useEffect(() => {
+      try {
+        if (position && markerRef && markerRef.current && typeof markerRef.current.openPopup === 'function') {
+          markerRef.current.openPopup()
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, [position, markerRef])
+    return null
+  }
 
   return (
     <Box sx={{ width: '100%', overflow: 'hidden' }}>
