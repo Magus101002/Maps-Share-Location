@@ -279,6 +279,19 @@ export default function Dashboard() {
     }
   }, [accessEditing])
 
+  // Keep dialog-local access objects in sync when the accesses list changes
+  useEffect(() => {
+    if (!accesses || accesses.length === 0) return
+    if (accessEditing) {
+      const latest = accesses.find((a) => a.id === accessEditing.id)
+      if (latest && latest !== accessEditing) setAccessEditing(latest)
+    }
+    if (createdAccess) {
+      const latest = accesses.find((a) => a.id === createdAccess.id)
+      if (latest && latest !== createdAccess) setCreatedAccess(latest)
+    }
+  }, [accesses])
+
   const handleClose = () => setOpen(false)
 
   const handleSubmit = async (e) => {

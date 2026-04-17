@@ -35,7 +35,8 @@ export default function AccessTokenDialog({
 }) {
   // helper to render server code boxes (6 digits)
   const renderCodeBoxes = (code) => {
-    const raw = (code || '').toString().replace(/\D/g, '').slice(0, 6)
+    // allow alphanumeric codes (letters + numbers), show up to 6 chars
+    const raw = (code || '').toString().replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase()
     const chars = raw.split('')
     const boxes = []
     for (let i = 0; i < 6; i++) boxes.push(chars[i] || '')
@@ -51,7 +52,8 @@ export default function AccessTokenDialog({
   const pasteFromClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText()
-      const v = (text || '').replace(/\D/g, '').slice(0,6)
+      // accept letters and numbers, strip other chars, uppercase
+      const v = (text || '').toString().replace(/[^A-Za-z0-9]/g, '').slice(0,6).toUpperCase()
       setInput(v)
     } catch (e) {
       // ignore
@@ -60,7 +62,7 @@ export default function AccessTokenDialog({
 
   const copyServerCode = () => {
     try {
-      const text = (serverCode || '').toString().replace(/\D/g, '').slice(0,6)
+      const text = (serverCode || '').toString().replace(/[^A-Za-z0-9]/g, '').slice(0,6)
       navigator.clipboard.writeText(text)
     } catch (e) {}
   }
@@ -89,9 +91,18 @@ export default function AccessTokenDialog({
                 <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
                   <Typography variant="body2">Pega aquí el código que te dio el propietario y pulsa Verificar.</Typography>
                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <TextField label="Código" value={input} onChange={(e) => setInput((e.target.value || '').replace(/\D/g, '').slice(0,6))} inputProps={{ maxLength: 6 }} size="small" fullWidth />
-                    <Button variant="outlined" onClick={pasteFromClipboard} startIcon={<ContentPasteIcon />} sx={{ textTransform: 'none' }} />
-                    <Button variant="contained" onClick={onVerify} disabled={verifyLoading}>
+                    <TextField
+                      label="Código"
+                      value={input}
+                      onChange={(e) => setInput((e.target.value || '').toString().replace(/[^A-Za-z0-9]/g, '').slice(0,6).toUpperCase())}
+                      inputProps={{ maxLength: 6 }}
+                      size="small"
+                      fullWidth
+                    />
+                    <Button variant="outlined" onClick={pasteFromClipboard} startIcon={<ContentPasteIcon />} sx={{ textTransform: 'none', whiteSpace: 'nowrap' }} />
+                  </Box>
+                  <Box>
+                    <Button variant="contained" onClick={onVerify} disabled={verifyLoading} fullWidth sx={{ textTransform: 'none' }}>
                       {verifyLoading ? <CircularProgress size={18} /> : 'Verificar'}
                     </Button>
                   </Box>
