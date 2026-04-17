@@ -490,7 +490,8 @@ export default function Home() {
         input={tokenDialogInput}
         setInput={setTokenDialogInput}
         onVerify={async () => {
-          const code = (tokenDialogInput || '').replace(/\D/g, '').slice(0,6)
+          // accept alphanumeric codes (letters+numbers), uppercase, max 6
+          const code = (tokenDialogInput || '').toString().replace(/[^A-Za-z0-9]/g, '').slice(0,6).toUpperCase()
           if (!code) return setSnack({ open: true, message: 'Introduce un código válido' })
           try {
             setVerifyLoading(true)

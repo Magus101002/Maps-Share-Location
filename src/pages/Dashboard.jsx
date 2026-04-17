@@ -880,7 +880,7 @@ export default function Dashboard() {
                     }} sx={{ textTransform: 'none' }}>Enviar por WhatsApp</Button>
                   </Box>
 
-                  <FormHelperText>Cuando el usuario no autenticado pegue el código desde el enlace, se mostrará aquí (no editable).</FormHelperText>
+                  <FormHelperText>Cuando el usuario ponga el código desde el enlace, se mostrará aquí (no editable).</FormHelperText>
 
                   {/* Display the code read-only if present, otherwise show waiting message */}
                   {(createdAccess?.code) || (accessEditing?.code) ? (

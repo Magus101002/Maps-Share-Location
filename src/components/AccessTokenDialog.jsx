@@ -89,7 +89,7 @@ export default function AccessTokenDialog({
 
               {!serverCode && tokenConnection ? (
                 <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
-                  <Typography variant="body2">Pega aquí el código que te dio el propietario y pulsa Verificar.</Typography>
+                  <Typography variant="body2">Hemos generado un código de vinculación y te lo hemos enviado a través de WhatsApp. Pégalo aquí debajo y pulsa Verificar.</Typography>
                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                     <TextField
                       label="Código"
@@ -114,14 +114,14 @@ export default function AccessTokenDialog({
 
           {serverCode ? (
             <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
-              <List dense sx={{ p: 0, mt: 0 }}>
-                {['Copia el código mostrado arriba.', 'Abre la notificación de WhatsApp y pega el código.', 'Alternativamente, abre WhatsApp y presiona "Dispositos Vinculados" en el menu de puntos.', 'Pega el código.'].map((it, i) => (
-                  <ListItem key={i} sx={{ py: 0.5 }}>
-                    <ListItemIcon sx={{ minWidth: 28 }}><FiberManualRecordIcon sx={{ fontSize: 12 }} /></ListItemIcon>
-                    <ListItemText primary={it} primaryTypographyProps={{ variant: 'body2' }} />
-                  </ListItem>
-                ))}
-              </List>
+              {/*<List dense sx={{ p: 0, mt: 0 }}>*/}
+              {/*  {['Copia el código mostrado arriba.', 'Abre la notificación de WhatsApp y pega el código.', 'Alternativamente, abre WhatsApp y presiona "Dispositos Vinculados" en el menu de puntos.', 'Pega el código.'].map((it, i) => (*/}
+              {/*    <ListItem key={i} sx={{ py: 0.5 }}>*/}
+              {/*      <ListItemIcon sx={{ minWidth: 28 }}><FiberManualRecordIcon sx={{ fontSize: 12 }} /></ListItemIcon>*/}
+              {/*      <ListItemText primary={it} primaryTypographyProps={{ variant: 'body2' }} />*/}
+              {/*    </ListItem>*/}
+              {/*  ))}*/}
+              {/*</List>*/}
 
               {verifyLoading ? (
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}>
