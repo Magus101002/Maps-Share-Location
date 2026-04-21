@@ -25,6 +25,7 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import AccessTokenDialog from '../components/AccessTokenDialog'
+import ConnectionTokenDialog from '../components/ConnectionTokenDialog'
 
 import iconUrl from 'leaflet/dist/images/marker-icon.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
@@ -82,6 +83,16 @@ export default function Home() {
   const tokenPollRef = useRef(null)
   const tokenApprovalPollRef = useRef(null)
   const [tokenConnection, setTokenConnection] = useState(null)
+  // 'access' | 'connection' | null — type of the resolved token
+  const [tokenType, setTokenType] = useState(null)
+  // for connection tokens state
+  const [connDialogOpen, setConnDialogOpen] = useState(false)
+  const [connDialogLoading, setConnDialogLoading] = useState(false)
+  const [connDialogCode, setConnDialogCode] = useState('')
+  const [connTokenConnection, setConnTokenConnection] = useState(null)
+  const connChannelRef = useRef(null)
+  const connPollRef = useRef(null)
+  const connApprovalPollRef = useRef(null)
   const [waDisabledIds, setWaDisabledIds] = useState([])
 
   const isWaDisabled = (id) => waDisabledIds.includes(id)
@@ -244,62 +255,41 @@ export default function Home() {
     }
   }
 
+  // Helper: fetch connection by token
+  const fetchConnectionByToken = async (token) => {
+    try {
+      const { data, error } = await supabase.from('Connection').select('*').eq('token', token).limit(1)
+      if (error) return { error }
+      const row = Array.isArray(data) ? data[0] : data
+      return { data: row }
+    } catch (err) {
+      return { error: err }
+    }
+  }
+
   // Called when user clicks share button in UI
   const handleShareButton = async () => {
     if (connectionToken) {
-      // open modal and start waiting for access/code
-      setTokenDialogOpen(true)
-      setTokenDialogLoading(true)
-      setTokenDialogMessage('Buscando acceso...')
-      setTokenDialogServerCode('')
-      setTokenDialogInput('')
-      setVerifyLoading(false)
-      setWaitingApproval(false)
+      // First, determine if this token belongs to an Access or a Connection
+      const accessRes = await fetchAccessByToken(connectionToken)
+      if (!accessRes.error && accessRes.data) {
+        // It's an Access token — use existing AccessTokenDialog flow
+        setTokenType('access')
+        setTokenDialogOpen(true)
+        setTokenDialogLoading(true)
+        setTokenDialogMessage('Buscando acceso...')
+        setTokenDialogServerCode('')
+        setTokenDialogInput('')
+        setVerifyLoading(false)
+        setWaitingApproval(false)
 
-      // first immediate fetch
-      const res = await fetchAccessByToken(connectionToken)
-      if (res.error) {
-        setTokenDialogMessage('Error buscando el acceso')
-        setTokenDialogLoading(false)
-        return
-      }
-      const row = res.data
-      if (row) setTokenConnection(row)
+        const row = accessRes.data
+        if (row) setTokenConnection(row)
 
-      // if code already present, show it and start polling for approval
-      if (row && row.code) {
-        setTokenDialogMessage('')
-        setTokenDialogServerCode(row.code)
-        setTokenDialogLoading(false)
-        // start polling for approval status
-        if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
-        tokenApprovalPollRef.current = setInterval(async () => {
-          const r2 = await fetchAccessByToken(connectionToken)
-          if (r2.data) setTokenConnection(r2.data)
-          if (r2.data && r2.data.is_approved) {
-            clearInterval(tokenApprovalPollRef.current)
-            tokenApprovalPollRef.current = null
-          }
-        }, 3000)
-        return
-      }
-
-      // if not found or no code yet, set waiting message and poll
-      setTokenDialogMessage('Introduce el código que te proporcionó el propietario.')
-      // spinner used only during initial lookup; when waiting for visitor input/polling we hide it
-      setTokenDialogLoading(false)
-
-      // poll as a fallback to detect code filled by remote
-          tokenPollRef.current = setInterval(async () => {
-        const r = await fetchAccessByToken(connectionToken)
-        if (r.data) setTokenConnection(r.data)
-        if (r.data && r.data.code) {
+        if (row && row.code) {
           setTokenDialogMessage('')
-          setTokenDialogServerCode(r.data.code)
+          setTokenDialogServerCode(row.code)
           setTokenDialogLoading(false)
-          clearInterval(tokenPollRef.current)
-          tokenPollRef.current = null
-          // start polling for approval status as well
           if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
           tokenApprovalPollRef.current = setInterval(async () => {
             const r2 = await fetchAccessByToken(connectionToken)
@@ -309,54 +299,156 @@ export default function Home() {
               tokenApprovalPollRef.current = null
             }
           }, 3000)
+          return
         }
-      }, 3000)
 
-      // realtime subscription to updates for this token (Access table)
-      try {
-        const chan = supabase
-          .channel(`token-wait-${connectionToken}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Access', filter: `token=eq.${connectionToken}` }, (payload) => {
-            const newRow = payload?.new
-            if (newRow) setTokenConnection(newRow)
-            if (newRow && newRow.code) {
-              // Clear waiting message when code arrives via realtime
-              setTokenDialogMessage('')
-                setTokenDialogServerCode(newRow.code)
-              setTokenDialogLoading(false)
-              if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
-              // start approval poll if not already
-              if (!newRow.is_approved) {
-                if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
-                tokenApprovalPollRef.current = setInterval(async () => {
-                  const r2 = await fetchAccessByToken(connectionToken)
-                  if (r2.data) setTokenConnection(r2.data)
-                  if (r2.data && r2.data.is_approved) {
-                    clearInterval(tokenApprovalPollRef.current)
-                    tokenApprovalPollRef.current = null
-                  }
-                }, 3000)
+        setTokenDialogMessage('Introduce el código que te proporcionó el propietario.')
+        setTokenDialogLoading(false)
+
+        tokenPollRef.current = setInterval(async () => {
+          const r = await fetchAccessByToken(connectionToken)
+          if (r.data) setTokenConnection(r.data)
+          if (r.data && r.data.code) {
+            setTokenDialogMessage('')
+            setTokenDialogServerCode(r.data.code)
+            setTokenDialogLoading(false)
+            clearInterval(tokenPollRef.current)
+            tokenPollRef.current = null
+            if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
+            tokenApprovalPollRef.current = setInterval(async () => {
+              const r2 = await fetchAccessByToken(connectionToken)
+              if (r2.data) setTokenConnection(r2.data)
+              if (r2.data && r2.data.is_approved) {
+                clearInterval(tokenApprovalPollRef.current)
+                tokenApprovalPollRef.current = null
               }
-            }
-            // If authenticated owner marks requested, indicate to the verifier
-            if (newRow && newRow.is_requested) {
-              // verifier waiting state should stop and show waiting approval
-              setVerifyLoading(false)
-              setWaitingApproval(true)
-            }
-            if (newRow && newRow.is_approved) {
-              // approval received
-              setTokenConnection(newRow)
-              setVerifyLoading(false)
-              setWaitingApproval(false)
-              if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
-            }
-          })
-          .subscribe()
-        tokenChannelRef.current = chan
-      } catch (e) {
-        // ignore subscribe errors; polling will continue
+            }, 3000)
+          }
+        }, 3000)
+
+        try {
+          const chan = supabase
+            .channel(`token-wait-${connectionToken}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Access', filter: `token=eq.${connectionToken}` }, (payload) => {
+              const newRow = payload?.new
+              if (newRow) setTokenConnection(newRow)
+              if (newRow && newRow.code) {
+                setTokenDialogMessage('')
+                setTokenDialogServerCode(newRow.code)
+                setTokenDialogLoading(false)
+                if (tokenPollRef.current) { clearInterval(tokenPollRef.current); tokenPollRef.current = null }
+                if (!newRow.is_approved) {
+                  if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
+                  tokenApprovalPollRef.current = setInterval(async () => {
+                    const r2 = await fetchAccessByToken(connectionToken)
+                    if (r2.data) setTokenConnection(r2.data)
+                    if (r2.data && r2.data.is_approved) {
+                      clearInterval(tokenApprovalPollRef.current)
+                      tokenApprovalPollRef.current = null
+                    }
+                  }, 3000)
+                }
+              }
+              if (newRow && newRow.is_requested) {
+                setVerifyLoading(false)
+                setWaitingApproval(true)
+              }
+              if (newRow && newRow.is_approved) {
+                setTokenConnection(newRow)
+                setVerifyLoading(false)
+                setWaitingApproval(false)
+                if (tokenApprovalPollRef.current) { clearInterval(tokenApprovalPollRef.current); tokenApprovalPollRef.current = null }
+              }
+            })
+            .subscribe()
+          tokenChannelRef.current = chan
+        } catch (e) {
+          // ignore subscribe errors; polling will continue
+        }
+        return
       }
+
+      // Not an Access token — check Connection table
+      const connRes = await fetchConnectionByToken(connectionToken)
+      if (!connRes.error && connRes.data) {
+        setTokenType('connection')
+        setConnDialogLoading(true)
+        setConnDialogCode('')
+        setConnTokenConnection(connRes.data)
+        setConnDialogOpen(true)
+
+        const row = connRes.data
+
+        if (row && row.code) {
+          setConnDialogCode(row.code)
+          setConnDialogLoading(false)
+          // start polling for approval
+          if (connApprovalPollRef.current) { clearInterval(connApprovalPollRef.current); connApprovalPollRef.current = null }
+          connApprovalPollRef.current = setInterval(async () => {
+            const r2 = await fetchConnectionByToken(connectionToken)
+            if (r2.data) setConnTokenConnection(r2.data)
+            if (r2.data && r2.data.is_approved) {
+              clearInterval(connApprovalPollRef.current)
+              connApprovalPollRef.current = null
+            }
+          }, 3000)
+        } else {
+          setConnDialogLoading(false)
+          // poll for code
+          connPollRef.current = setInterval(async () => {
+            const r = await fetchConnectionByToken(connectionToken)
+            if (r.data) setConnTokenConnection(r.data)
+            if (r.data && r.data.code) {
+              setConnDialogCode(r.data.code)
+              clearInterval(connPollRef.current)
+              connPollRef.current = null
+              // start approval poll
+              if (connApprovalPollRef.current) { clearInterval(connApprovalPollRef.current); connApprovalPollRef.current = null }
+              connApprovalPollRef.current = setInterval(async () => {
+                const r2 = await fetchConnectionByToken(connectionToken)
+                if (r2.data) setConnTokenConnection(r2.data)
+                if (r2.data && r2.data.is_approved) {
+                  clearInterval(connApprovalPollRef.current)
+                  connApprovalPollRef.current = null
+                }
+              }, 3000)
+            }
+          }, 3000)
+        }
+
+        // realtime subscription for Connection table
+        try {
+          const chan = supabase
+            .channel(`conn-token-wait-${connectionToken}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Connection', filter: `token=eq.${connectionToken}` }, (payload) => {
+              const newRow = payload?.new
+              if (newRow) setConnTokenConnection(newRow)
+              if (newRow && newRow.code) {
+                setConnDialogCode(newRow.code)
+                if (connPollRef.current) { clearInterval(connPollRef.current); connPollRef.current = null }
+                if (!newRow.is_approved && !connApprovalPollRef.current) {
+                  connApprovalPollRef.current = setInterval(async () => {
+                    const r2 = await fetchConnectionByToken(connectionToken)
+                    if (r2.data) setConnTokenConnection(r2.data)
+                    if (r2.data && r2.data.is_approved) {
+                      clearInterval(connApprovalPollRef.current)
+                      connApprovalPollRef.current = null
+                    }
+                  }, 3000)
+                }
+              }
+              if (newRow && newRow.is_approved) {
+                if (connApprovalPollRef.current) { clearInterval(connApprovalPollRef.current); connApprovalPollRef.current = null }
+              }
+            })
+            .subscribe()
+          connChannelRef.current = chan
+        } catch (e) { /* ignore */ }
+        return
+      }
+
+      // Token not found in either table
+      setSnack({ open: true, message: 'Enlace no válido o expirado' })
     } else {
       // no token: just start sharing normally
       startSharing()
@@ -534,6 +626,55 @@ export default function Home() {
         }}
         position={position}
         isNarrow={isNarrow}
+      />
+
+      {/* Connection token dialog — for when the URL token belongs to a Connection row */}
+      <ConnectionTokenDialog
+        open={connDialogOpen}
+        onClose={() => {
+          setConnDialogOpen(false)
+          setConnDialogCode('')
+          setConnTokenConnection(null)
+          if (connPollRef.current) { clearInterval(connPollRef.current); connPollRef.current = null }
+          if (connApprovalPollRef.current) { clearInterval(connApprovalPollRef.current); connApprovalPollRef.current = null }
+          try { connChannelRef.current?.unsubscribe() } catch (e) {}
+        }}
+        loading={connDialogLoading}
+        code={connDialogCode}
+        tokenConnection={connTokenConnection}
+        isNarrow={isNarrow}
+        waDisabled={isWaDisabled(`wa-conn-token-${connTokenConnection?.id ?? 'c'}`)}
+        onCopy={() => {
+          const raw = (connDialogCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+          const formatted = raw.slice(0, 4) + (raw.length > 4 ? '-' + raw.slice(4) : '')
+          try {
+            navigator.clipboard.writeText(formatted)
+            setSnack({ open: true, message: 'Código copiado al portapapeles' })
+          } catch (e) {
+            setSnack({ open: true, message: 'No se pudo copiar' })
+          }
+        }}
+        onShare={() => {
+          const id = `wa-conn-token-${connTokenConnection?.id ?? 'c'}`
+          const connPhoneRaw = connTokenConnection?.user_linked ?? ''
+          const connDigits = (connPhoneRaw || '').replace(/\D/g, '')
+          const sendWithCoords = (lat, lng) => {
+            const maps = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+            const waUrl = `https://wa.me/${connDigits}?text=${encodeURIComponent(maps)}`
+            openWaUrlWithCooldown(id, waUrl)
+            setConnDialogOpen(false)
+          }
+          if (isWaDisabled(id)) return
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => sendWithCoords(pos.coords.latitude, pos.coords.longitude),
+              () => { try { if (position) sendWithCoords(position[0], position[1]) } catch (e) {} },
+              { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            )
+          } else {
+            setSnack({ open: true, message: 'Geolocalización no disponible' })
+          }
+        }}
       />
     </Box>
   )
