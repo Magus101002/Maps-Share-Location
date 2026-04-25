@@ -55,7 +55,7 @@ export default function NavBar() {
             <MapLogo />
           </Box>
           <Typography variant="h6" sx={{ color: 'inherit', fontWeight: 700 }}>
-            Google Maps Share Location
+            Maps Share Location
           </Typography>
         </Box>
 
